@@ -33,6 +33,15 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# temp files
+/tmp/
+
+# playwright screenshots
+.playwright-mcp/
+
+# claude
+.claude/
+
 # vercel
 .vercel
 
