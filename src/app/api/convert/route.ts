@@ -53,7 +53,9 @@ export async function POST(request: NextRequest) {
 
       // Regenerate thumbnail
       const thumbBuffer = await generateThumbnail(convertedBuffer);
-      await writeFile(path.join(dir, `${imageId}_thumb.jpg`), thumbBuffer);
+      if (thumbBuffer) {
+        await writeFile(path.join(dir, `${imageId}_thumb.jpg`), thumbBuffer);
+      }
 
       const mimeMap: Record<string, string> = {
         jpeg: 'image/jpeg',

@@ -65,8 +65,10 @@ export async function PUT(request: NextRequest) {
 
     // Regenerate thumbnail
     const thumbBuffer = await generateThumbnail(updatedBuffer);
-    const thumbPath = path.join(dir, `${imageId}_thumb.jpg`);
-    await writeFile(thumbPath, thumbBuffer);
+    if (thumbBuffer) {
+      const thumbPath = path.join(dir, `${imageId}_thumb.jpg`);
+      await writeFile(thumbPath, thumbBuffer);
+    }
 
     // Re-read metadata to confirm
     const metadata = await readAllMetadata(updatedBuffer);

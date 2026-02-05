@@ -2,7 +2,7 @@ export interface ImageFile {
   id: string;
   filename: string;
   originalFilename: string;
-  format: 'jpeg' | 'png' | 'heic' | 'webp' | 'tiff';
+  format: 'jpeg' | 'png' | 'heic' | 'heif' | 'webp' | 'tiff';
   mimeType: string;
   size: number;
   width: number;

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Canvas, FabricImage, Path, PencilBrush } from 'fabric';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Canvas, FabricImage, Path } from 'fabric';
 
 interface InpaintingCanvasProps {
   imageUrl: string;
@@ -51,7 +51,8 @@ export default function InpaintingCanvas({
         evented: false,
       });
 
-      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+      canvas.backgroundImage = img;
+      canvas.renderAll();
       setCanvasReady(true);
     });
 
@@ -82,23 +83,7 @@ export default function InpaintingCanvas({
     }
   }, [brushSize, brushMode]);
 
-  // Notify parent of mask changes
-  useEffect(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    const handleModified = () => {
-      exportMask();
-    };
-
-    canvas.on('path:created', handleModified);
-
-    return () => {
-      canvas.off('path:created', handleModified);
-    };
-  }, [onMaskChange]);
-
-  const exportMask = () => {
+  const exportMask = useCallback(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
@@ -119,7 +104,7 @@ export default function InpaintingCanvas({
       if (obj.type === 'path') {
         ctx.save();
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = (obj as any).strokeWidth || brushSize;
+        ctx.lineWidth = (obj as { strokeWidth?: number }).strokeWidth || brushSize;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -128,7 +113,7 @@ export default function InpaintingCanvas({
         if (!pathData) return;
 
         ctx.beginPath();
-        pathData.forEach((segment, i) => {
+        pathData.forEach((segment) => {
           const cmd = segment[0];
           if (cmd === 'M') {
             ctx.moveTo(segment[1], segment[2]);
@@ -145,7 +130,23 @@ export default function InpaintingCanvas({
 
     const maskDataUrl = maskCanvas.toDataURL('image/png');
     onMaskChange?.(objects.length > 0 ? maskDataUrl : null);
-  };
+  }, [brushSize, onMaskChange]);
+
+  // Notify parent of mask changes
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    const handleModified = () => {
+      exportMask();
+    };
+
+    canvas.on('path:created', handleModified);
+
+    return () => {
+      canvas.off('path:created', handleModified);
+    };
+  }, [exportMask]);
 
   const clearMask = () => {
     const canvas = fabricCanvasRef.current;

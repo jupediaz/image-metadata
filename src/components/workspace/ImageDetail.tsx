@@ -6,11 +6,15 @@ import { MetadataPanel } from '@/components/metadata/MetadataPanel';
 import { MetadataEditor } from '@/components/metadata/MetadataEditor';
 import { formatFileSize } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
-import { HeicImage } from '@/components/ui/HeicImage';
 import dynamic from 'next/dynamic';
 
 const EditHistory = dynamic(() => import('@/components/editor/EditHistory'), {
   ssr: false
+});
+
+const HeicImage = dynamic(() => import('@/components/ui/HeicImage').then(mod => ({ default: mod.HeicImage })), {
+  ssr: false,
+  loading: () => <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
 });
 
 export function ImageDetail() {

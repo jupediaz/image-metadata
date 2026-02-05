@@ -48,11 +48,8 @@ export async function POST(request: NextRequest) {
       const format = isHeic ? 'heic' : info.format;
       const fileExt = formatToExt(format);
 
-      // Save file (converted if HEIC)
+      // Save file
       await saveFile(sessionId, fileId, fileExt, buffer);
-
-      // Get final image dimensions
-      const info = await getImageInfo(buffer);
 
       // Generate thumbnail
       const thumbBuffer = await generateThumbnail(buffer);

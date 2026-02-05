@@ -2,7 +2,12 @@
 
 import { useImageStore } from '@/hooks/useImageStore';
 import { ImageFile } from '@/types/image';
-import { HeicImage } from '@/components/ui/HeicImage';
+import dynamic from 'next/dynamic';
+
+const HeicImage = dynamic(() => import('@/components/ui/HeicImage').then(mod => ({ default: mod.HeicImage })), {
+  ssr: false,
+  loading: () => <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+});
 
 export function ImageGrid() {
   const images = useImageStore((s) => s.images);

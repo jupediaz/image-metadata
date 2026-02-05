@@ -239,7 +239,7 @@ export default function ImageEditor() {
                 <ol className="list-decimal list-inside space-y-1">
                   <li>Draw a mask over areas to edit (optional)</li>
                   <li>Describe your desired changes</li>
-                  <li>Click "Generate AI Edit"</li>
+                  <li>Click &quot;Generate AI Edit&quot;</li>
                   <li>Review and accept or refine</li>
                 </ol>
               </div>
