@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
-import { saveFile, saveThumbnail, formatToExt, extToFormat } from '@/lib/file-manager';
+import { saveFile, saveThumbnail, formatToExt } from '@/lib/file-manager';
 import { generateThumbnail, getImageInfo } from '@/lib/image-processing';
 import { readAllMetadata } from '@/lib/metadata-reader';
 import { ImageFile } from '@/types/image';
@@ -43,17 +43,22 @@ export async function POST(request: NextRequest) {
       const fileId = uuidv4();
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      // Get image info via sharp
+      // Get image info
       const info = await getImageInfo(buffer);
       const format = isHeic ? 'heic' : info.format;
       const fileExt = formatToExt(format);
 
-      // Save original file
+      // Save file (converted if HEIC)
       await saveFile(sessionId, fileId, fileExt, buffer);
+
+      // Get final image dimensions
+      const info = await getImageInfo(buffer);
 
       // Generate thumbnail
       const thumbBuffer = await generateThumbnail(buffer);
-      await saveThumbnail(sessionId, fileId, thumbBuffer);
+      if (thumbBuffer) {
+        await saveThumbnail(sessionId, fileId, thumbBuffer);
+      }
 
       // Read metadata
       const metadata = await readAllMetadata(buffer);
@@ -67,7 +72,7 @@ export async function POST(request: NextRequest) {
         size: buffer.length,
         width: info.width,
         height: info.height,
-        thumbnailUrl: `/api/thumbnail?sessionId=${sessionId}&id=${fileId}`,
+        thumbnailUrl: thumbBuffer ? `/api/thumbnail?sessionId=${sessionId}&id=${fileId}` : undefined,
         metadata,
         status: 'ready',
       };

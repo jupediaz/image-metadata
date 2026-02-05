@@ -24,7 +24,7 @@ export function MetadataPanel({ image }: MetadataPanelProps) {
   }
 
   return (
-    <div className="divide-y-0">
+    <div className="divide-y-0 text-xs">
       {metadata.exif && (
         <Accordion title="Camara y Lente" defaultOpen badge={countFields(metadata.exif)}>
           <ExifSection data={metadata.exif} />
@@ -38,18 +38,18 @@ export function MetadataPanel({ image }: MetadataPanelProps) {
       )}
 
       {metadata.gps && (
-        <Accordion title="GPS y Ubicacion" badge="Mapa">
+        <Accordion title="GPS y Ubicacion" defaultOpen badge="Mapa">
           <GpsSection data={metadata.gps} />
         </Accordion>
       )}
 
       {metadata.iptc && (
-        <Accordion title="IPTC / Descripcion" badge={countFields(metadata.iptc)}>
+        <Accordion title="IPTC / Descripcion" defaultOpen badge={countFields(metadata.iptc)}>
           <IptcSection data={metadata.iptc} />
         </Accordion>
       )}
 
-      <Accordion title="Todos los datos" badge="Raw">
+      <Accordion title="Todos los datos" defaultOpen badge="Raw">
         <RawDataSection data={metadata.raw} />
       </Accordion>
     </div>

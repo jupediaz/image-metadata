@@ -31,11 +31,11 @@ export function ExifSection({ data }: Props) {
 
 function MetadataTable({ rows }: { rows: Array<{ label: string; value: string }> }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {rows.map(({ label, value }) => (
-        <div key={label} className="flex justify-between items-start py-1.5 text-sm">
-          <span className="text-gray-500 dark:text-gray-400 flex-shrink-0 mr-4">{label}</span>
-          <span className="text-gray-900 dark:text-gray-100 text-right font-mono text-xs break-all">{value}</span>
+        <div key={label} className="flex justify-between items-start py-0.5 text-xs">
+          <span className="text-gray-500 dark:text-gray-400 flex-shrink-0 mr-3">{label}</span>
+          <span className="text-gray-900 dark:text-gray-100 text-right font-mono text-[10px] break-all">{value}</span>
         </div>
       ))}
     </div>

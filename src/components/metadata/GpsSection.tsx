@@ -25,14 +25,14 @@ export function GpsSection({ data }: Props) {
   if (data.direction !== undefined) rows.push({ label: 'Direccion', value: `${data.direction.toFixed(1)}°` });
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <LocationMap latitude={data.latitude} longitude={data.longitude} />
 
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {rows.map(({ label, value }) => (
-          <div key={label} className="flex justify-between items-start py-1.5 text-sm">
-            <span className="text-gray-500 dark:text-gray-400 flex-shrink-0 mr-4">{label}</span>
-            <span className="text-gray-900 dark:text-gray-100 text-right font-mono text-xs">{value}</span>
+          <div key={label} className="flex justify-between items-start py-0.5 text-xs">
+            <span className="text-gray-500 dark:text-gray-400 flex-shrink-0 mr-3">{label}</span>
+            <span className="text-gray-900 dark:text-gray-100 text-right font-mono text-[10px]">{value}</span>
           </div>
         ))}
       </div>
@@ -41,9 +41,9 @@ export function GpsSection({ data }: Props) {
         href={`https://www.google.com/maps?q=${data.latitude},${data.longitude}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+        className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
           <polyline points="15 3 21 3 21 9" />
           <line x1="10" y1="14" x2="21" y2="3" />

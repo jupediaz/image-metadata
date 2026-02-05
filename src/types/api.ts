@@ -49,3 +49,32 @@ export interface ExportRequest {
   format?: 'jpeg' | 'png' | 'webp';
   quality?: number;
 }
+
+export interface GeminiEditApiRequest {
+  sessionId: string;
+  imageId: string;
+  prompt: string;
+  maskDataUrl?: string;       // data:image/png;base64,...
+  preserveExif: boolean;
+}
+
+export interface GeminiEditApiResponse {
+  success: boolean;
+  newVersionId: string;
+  editedImageUrl: string;
+  thumbnailUrl?: string;
+  processingTimeMs: number;
+  error?: string;
+}
+
+export interface ExifRestoreRequest {
+  sessionId: string;
+  sourceImageId: string;      // Original image with EXIF
+  targetImageId: string;      // Edited image to inject EXIF into
+}
+
+export interface ExifRestoreResponse {
+  success: boolean;
+  metadata?: ImageMetadata;
+  error?: string;
+}

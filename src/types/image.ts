@@ -7,9 +7,21 @@ export interface ImageFile {
   size: number;
   width: number;
   height: number;
-  thumbnailUrl: string;
+  thumbnailUrl?: string; // Optional: may not be available for unsupported formats
   metadata: ImageMetadata | null;
   status: ProcessingStatus;
+  editHistory?: EditVersion[];
+  currentVersionIndex?: number;
+}
+
+export interface EditVersion {
+  id: string;
+  timestamp: Date;
+  prompt: string;
+  maskDataUrl?: string;      // The mask used for this edit
+  imageUrl: string;           // URL to the edited version
+  thumbnailUrl?: string;      // Thumbnail of the edited version
+  originalExifDump?: string;  // Base64 EXIF dump from original
 }
 
 export type ProcessingStatus =
@@ -18,6 +30,8 @@ export type ProcessingStatus =
   | 'ready'
   | 'editing'
   | 'converting'
+  | 'ai-editing'      // AI processing with Gemini
+  | 'restoring-exif'  // EXIF restoration
   | 'error';
 
 export interface ImageMetadata {

@@ -1,11 +1,17 @@
 import sharp from 'sharp';
 
-export async function generateThumbnail(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer)
-    .rotate() // auto-rotate based on EXIF orientation
-    .resize(300, 300, { fit: 'cover', position: 'centre' })
-    .jpeg({ quality: 80 })
-    .toBuffer();
+export async function generateThumbnail(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    return await sharp(buffer)
+      .rotate() // auto-rotate based on EXIF orientation
+      .resize(300, 300, { fit: 'cover', position: 'centre' })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch (error) {
+    // Sharp puede fallar con HEIF/HEIC si no tiene soporte compilado
+    console.warn('Failed to generate thumbnail:', error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 export async function getImageInfo(buffer: Buffer): Promise<{

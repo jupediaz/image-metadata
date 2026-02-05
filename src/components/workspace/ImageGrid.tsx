@@ -2,6 +2,7 @@
 
 import { useImageStore } from '@/hooks/useImageStore';
 import { ImageFile } from '@/types/image';
+import { HeicImage } from '@/components/ui/HeicImage';
 
 export function ImageGrid() {
   const images = useImageStore((s) => s.images);
@@ -10,6 +11,36 @@ export function ImageGrid() {
   const selectAll = useImageStore((s) => s.selectAll);
   const deselectAll = useImageStore((s) => s.deselectAll);
   const setActiveImage = useImageStore((s) => s.setActiveImage);
+  const removeImage = useImageStore((s) => s.removeImage);
+  const sessionId = useImageStore((s) => s.sessionId);
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+
+    const count = selectedIds.size;
+    if (!confirm(`¿Estás seguro de que quieres eliminar ${count} imagen${count > 1 ? 'es' : ''}?`)) {
+      return;
+    }
+
+    const selectedImages = images.filter((img) => selectedIds.has(img.id));
+
+    for (const image of selectedImages) {
+      try {
+        const ext = image.format === 'jpeg' ? '.jpg' : `.${image.format}`;
+        const res = await fetch(`/api/delete?sessionId=${sessionId}&id=${image.id}&ext=${ext}`, {
+          method: 'DELETE',
+        });
+
+        if (res.ok) {
+          removeImage(image.id);
+        } else {
+          console.error(`Error deleting image ${image.id}`);
+        }
+      } catch (error) {
+        console.error(`Error deleting image ${image.id}:`, error);
+      }
+    }
+  };
 
   return (
     <div className="p-4">
@@ -23,12 +54,28 @@ export function ImageGrid() {
             </span>
           )}
         </p>
-        <button
-          onClick={() => selectedIds.size === images.length ? deselectAll() : selectAll()}
-          className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 min-h-[44px] px-3"
-        >
-          {selectedIds.size === images.length ? 'Deseleccionar' : 'Seleccionar todo'}
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 dark:text-red-400 min-h-[44px] px-3"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+              Eliminar
+            </button>
+          )}
+          <button
+            onClick={() => selectedIds.size === images.length ? deselectAll() : selectAll()}
+            className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 min-h-[44px] px-3"
+          >
+            {selectedIds.size === images.length ? 'Deseleccionar' : 'Seleccionar todo'}
+          </button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -58,6 +105,11 @@ function ImageCard({
   onToggle: () => void;
   onOpen: () => void;
 }) {
+  // Use thumbnail if available, otherwise use full image (for HEIC without thumbnail)
+  const sessionId = useImageStore((s) => s.sessionId);
+  const ext = image.format === 'jpeg' ? '.jpg' : `.${image.format}`;
+  const imageUrl = image.thumbnailUrl || `/api/image?sessionId=${sessionId}&id=${image.id}&ext=${ext}`;
+
   return (
     <div
       className={`
@@ -71,13 +123,23 @@ function ImageCard({
       `}
     >
       {/* Thumbnail */}
-      <img
-        src={image.thumbnailUrl}
-        alt={image.filename}
-        className="w-full h-full object-cover"
-        onClick={onOpen}
-        loading="lazy"
-      />
+      {image.format === 'heic' || image.format === 'heif' ? (
+        <HeicImage
+          src={imageUrl}
+          alt={image.filename}
+          className="w-full h-full object-cover"
+          onClick={onOpen}
+          loading="lazy"
+        />
+      ) : (
+        <img
+          src={imageUrl}
+          alt={image.filename}
+          className="w-full h-full object-cover"
+          onClick={onOpen}
+          loading="lazy"
+        />
+      )}
 
       {/* Checkbox overlay */}
       <button

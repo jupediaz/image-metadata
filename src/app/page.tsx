@@ -3,34 +3,37 @@
 import { useImageStore } from '@/hooks/useImageStore';
 import { DropZone } from '@/components/upload/DropZone';
 import { ImageWorkspace } from '@/components/workspace/ImageWorkspace';
+import { GlobalDropZone } from '@/components/upload/GlobalDropZone';
 
 export default function Home() {
   const view = useImageStore((s) => s.view);
   const images = useImageStore((s) => s.images);
 
   return (
-    <div className="min-h-dvh flex flex-col">
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-            Image Metadata Tool
-          </h1>
-          {images.length > 0 && view !== 'upload' && (
-            <AddMoreButton />
-          )}
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-7xl mx-auto w-full">
-        {view === 'upload' || images.length === 0 ? (
-          <div className="p-4 flex items-center justify-center min-h-[calc(100dvh-60px)]">
-            <DropZone />
+    <GlobalDropZone>
+      <div className="min-h-dvh flex flex-col">
+        <header className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              Image Metadata Tool
+            </h1>
+            {images.length > 0 && view !== 'upload' && (
+              <AddMoreButton />
+            )}
           </div>
-        ) : (
-          <ImageWorkspace />
-        )}
-      </main>
-    </div>
+        </header>
+
+        <main className="flex-1 max-w-7xl mx-auto w-full">
+          {view === 'upload' || images.length === 0 ? (
+            <div className="p-4 flex items-center justify-center min-h-[calc(100dvh-60px)]">
+              <DropZone />
+            </div>
+          ) : (
+            <ImageWorkspace />
+          )}
+        </main>
+      </div>
+    </GlobalDropZone>
   );
 }
 

@@ -28,12 +28,13 @@ export async function GET(request: NextRequest) {
       if (!match) {
         return NextResponse.json({ error: 'Archivo no encontrado' }, { status: 404 });
       }
+      const matchExt = path.extname(match).toLowerCase();
       const buffer = await readFile(path.join(dir, match));
+
       const mimeMap: Record<string, string> = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-        '.webp': 'image/webp', '.heic': 'image/heic', '.tiff': 'image/tiff',
+        '.webp': 'image/webp', '.tiff': 'image/tiff',
       };
-      const matchExt = path.extname(match).toLowerCase();
       return new Response(new Uint8Array(buffer), {
         headers: {
           'Content-Type': mimeMap[matchExt] || 'application/octet-stream',
@@ -43,13 +44,15 @@ export async function GET(request: NextRequest) {
     }
 
     const buffer = await readFile(filePath);
+    const extLower = ext.toLowerCase();
+
     const mimeMap: Record<string, string> = {
       '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-      '.webp': 'image/webp', '.heic': 'image/heic', '.tiff': 'image/tiff',
+      '.webp': 'image/webp', '.tiff': 'image/tiff',
     };
     return new Response(new Uint8Array(buffer), {
       headers: {
-        'Content-Type': mimeMap[ext.toLowerCase()] || 'application/octet-stream',
+        'Content-Type': mimeMap[extLower] || 'application/octet-stream',
         'Cache-Control': 'private, max-age=3600',
       },
     });
