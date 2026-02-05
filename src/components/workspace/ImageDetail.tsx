@@ -12,11 +12,6 @@ const EditHistory = dynamic(() => import('@/components/editor/EditHistory'), {
   ssr: false
 });
 
-const HeicImage = dynamic(() => import('@/components/ui/HeicImage').then(mod => ({ default: mod.HeicImage })), {
-  ssr: false,
-  loading: () => <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-});
-
 export function ImageDetail() {
   const images = useImageStore((s) => s.images);
   const activeImageId = useImageStore((s) => s.activeImageId);
@@ -124,19 +119,11 @@ export function ImageDetail() {
 
         {/* Image */}
         <div className="relative bg-gray-100 dark:bg-gray-900 flex items-center justify-center min-h-[250px] sm:min-h-[500px] lg:min-h-[600px]">
-          {image.format === 'heic' || image.format === 'heif' ? (
-            <HeicImage
-              src={currentVersion ? currentVersion.imageUrl : `/api/image?sessionId=${sessionId}&id=${image.id}&ext=${ext}`}
-              alt={image.filename}
-              className="max-w-full max-h-[70vh] lg:max-h-[80vh] w-auto h-auto object-contain"
-            />
-          ) : (
-            <img
-              src={currentVersion ? currentVersion.imageUrl : `/api/image?sessionId=${sessionId}&id=${image.id}&ext=${ext}`}
-              alt={image.filename}
-              className="max-w-full max-h-[70vh] lg:max-h-[80vh] w-auto h-auto object-contain"
-            />
-          )}
+          <img
+            src={currentVersion ? currentVersion.imageUrl : `/api/image?sessionId=${sessionId}&id=${image.id}&ext=${ext}`}
+            alt={image.filename}
+            className="max-w-full max-h-[70vh] lg:max-h-[80vh] w-auto h-auto object-contain"
+          />
           {currentVersion && (
             <div className="absolute top-2 right-2 px-2 py-1 bg-blue-600 text-white text-xs rounded-md">
               Versión {versionIndex + 1}

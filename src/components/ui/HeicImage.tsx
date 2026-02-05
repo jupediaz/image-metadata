@@ -18,6 +18,7 @@ export function HeicImage({ src, alt, className, onClick, loading }: HeicImagePr
 
   useEffect(() => {
     let objectUrl: string | null = null;
+    let mounted = true;
 
     async function convertHeic() {
       try {
@@ -26,7 +27,25 @@ export function HeicImage({ src, alt, className, onClick, loading }: HeicImagePr
 
         // Fetch the HEIC file
         const response = await fetch(src);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.statusText}`);
+        }
+
         const blob = await response.blob();
+
+        // Check if it's actually a HEIC file
+        if (!blob.type.includes('heic') && !blob.type.includes('heif')) {
+          console.warn('File is not HEIC, might already be converted:', blob.type);
+          // If it's already converted to another format, just use it
+          if (blob.type.startsWith('image/')) {
+            objectUrl = URL.createObjectURL(blob);
+            if (mounted) {
+              setDisplaySrc(objectUrl);
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
 
         // Convert to JPEG blob for display
         const convertedBlob = await heic2any({
@@ -38,19 +57,25 @@ export function HeicImage({ src, alt, className, onClick, loading }: HeicImagePr
         // Create object URL for display
         const blobToUse = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
         objectUrl = URL.createObjectURL(blobToUse);
-        setDisplaySrc(objectUrl);
-        setIsLoading(false);
+
+        if (mounted) {
+          setDisplaySrc(objectUrl);
+          setIsLoading(false);
+        }
       } catch (err) {
         console.error('Failed to convert HEIC:', err);
-        setError(true);
-        setIsLoading(false);
+        if (mounted) {
+          setError(true);
+          setIsLoading(false);
+        }
       }
     }
 
     convertHeic();
 
-    // Cleanup object URL on unmount
+    // Cleanup
     return () => {
+      mounted = false;
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
       }

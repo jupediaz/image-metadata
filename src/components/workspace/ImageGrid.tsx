@@ -2,12 +2,6 @@
 
 import { useImageStore } from '@/hooks/useImageStore';
 import { ImageFile } from '@/types/image';
-import dynamic from 'next/dynamic';
-
-const HeicImage = dynamic(() => import('@/components/ui/HeicImage').then(mod => ({ default: mod.HeicImage })), {
-  ssr: false,
-  loading: () => <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-});
 
 export function ImageGrid() {
   const images = useImageStore((s) => s.images);
@@ -128,23 +122,13 @@ function ImageCard({
       `}
     >
       {/* Thumbnail */}
-      {image.format === 'heic' || image.format === 'heif' ? (
-        <HeicImage
-          src={imageUrl}
-          alt={image.filename}
-          className="w-full h-full object-cover"
-          onClick={onOpen}
-          loading="lazy"
-        />
-      ) : (
-        <img
-          src={imageUrl}
-          alt={image.filename}
-          className="w-full h-full object-cover"
-          onClick={onOpen}
-          loading="lazy"
-        />
-      )}
+      <img
+        src={imageUrl}
+        alt={image.filename}
+        className="w-full h-full object-cover"
+        onClick={onOpen}
+        loading="lazy"
+      />
 
       {/* Checkbox overlay */}
       <button

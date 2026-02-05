@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
       // Save file
       await saveFile(sessionId, fileId, fileExt, buffer);
 
-      // Generate thumbnail
-      const thumbBuffer = await generateThumbnail(buffer);
+      // Generate thumbnail (pass format for HEIC handling)
+      const thumbBuffer = await generateThumbnail(buffer, format);
       if (thumbBuffer) {
         await saveThumbnail(sessionId, fileId, thumbBuffer);
       }

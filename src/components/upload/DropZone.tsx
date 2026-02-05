@@ -50,16 +50,19 @@ export function DropZone() {
 
   const onDragOver = (e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent GlobalDropZone from handling
     setIsDragging(true);
   };
 
   const onDragLeave = (e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent GlobalDropZone from handling
     setIsDragging(false);
   };
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent GlobalDropZone from handling
     setIsDragging(false);
     if (e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
