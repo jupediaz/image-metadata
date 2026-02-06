@@ -1,13 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Gemini 2.0 Flash Experimental model
-// Note: This model will be retired in March 2026, plan migration to Gemini 2.5
-const MODEL_NAME = 'gemini-2.0-flash-exp';
+// Default Gemini model for image generation (Nano Banana - fast)
+const DEFAULT_MODEL = 'gemini-2.5-flash-image';
 
 interface EditImageParams {
   imageBase64: string;
   prompt: string;
   maskBase64?: string;
+  model?: string;  // Optional model override
 }
 
 interface EditImageResult {
@@ -35,12 +35,12 @@ export async function editImageWithGemini(
   apiKey: string,
   params: EditImageParams
 ): Promise<EditImageResult> {
+  const modelName = params.model || DEFAULT_MODEL;
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
-    generationConfig: {
-      responseMimeType: 'image/jpeg',
-    },
+    model: modelName,
+    // Note: responseMimeType is not needed for image generation
+    // Gemini returns images via inlineData in response parts
   });
 
   const parts: Array<{ inlineData: { mimeType: string; data: string } } | { text: string }> = [];
@@ -76,6 +76,19 @@ export async function editImageWithGemini(
   let imageBase64 = '';
   let text = '';
 
+  // Log full response for debugging
+  console.log('Gemini response:', JSON.stringify({
+    candidates: response.candidates?.map(c => ({
+      finishReason: c.finishReason,
+      parts: c.content?.parts?.map(p => ({
+        hasText: !!p.text,
+        hasInlineData: !!p.inlineData,
+        textPreview: p.text?.substring(0, 100),
+        mimeType: p.inlineData?.mimeType,
+      })),
+    })),
+  }, null, 2));
+
   // Extract image and text from response
   for (const candidate of response.candidates ?? []) {
     for (const part of candidate.content?.parts ?? []) {
@@ -89,7 +102,8 @@ export async function editImageWithGemini(
   }
 
   if (!imageBase64) {
-    throw new Error('Gemini did not return an image. The model may have rejected the request due to content policy or other issues.');
+    console.error('No image found in response. Model:', modelName);
+    throw new Error(`Gemini did not return an image. Model "${modelName}" may not support image generation. Try using "gemini-2.5-flash-image" or "gemini-3-pro-image-preview" instead.`);
   }
 
   return { imageBase64, text };
@@ -101,7 +115,7 @@ export async function editImageWithGemini(
 export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const model = genAI.getGenerativeModel({ model: DEFAULT_MODEL });
     await model.generateContent('test');
     return true;
   } catch {

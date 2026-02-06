@@ -22,6 +22,7 @@ export interface EditVersion {
   imageUrl: string;           // URL to the edited version
   thumbnailUrl?: string;      // Thumbnail of the edited version
   originalExifDump?: string;  // Base64 EXIF dump from original
+  model?: string;             // Gemini model used for this edit
 }
 
 export type ProcessingStatus =

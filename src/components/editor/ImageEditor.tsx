@@ -23,6 +23,22 @@ export default function ImageEditor() {
 
   const [preserveExif, setPreserveExif] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+
+  const modelOptions = [
+    {
+      value: 'gemini-2.5-flash-image',
+      label: 'Gemini 2.5 Flash Image',
+      nickname: 'Nano Banana',
+      description: 'Fast image generation and editing (recommended)',
+    },
+    {
+      value: 'gemini-3-pro-image-preview',
+      label: 'Gemini 3 Pro Image Preview',
+      nickname: 'Nano Banana Pro',
+      description: 'Highest quality image generation (slower)',
+    },
+  ];
 
   if (!editorState) {
     return null;
@@ -49,6 +65,7 @@ export default function ImageEditor() {
         prompt: editorState.prompt,
         maskDataUrl: editorState.maskDataUrl || undefined,
         preserveExif,
+        model: selectedModel,
       };
 
       // Get user's API key from localStorage if available
@@ -84,6 +101,7 @@ export default function ImageEditor() {
         maskDataUrl: editorState.maskDataUrl || undefined,
         imageUrl: data.editedImageUrl,
         thumbnailUrl: data.thumbnailUrl,
+        model: selectedModel,
       };
 
       saveEditVersion(currentImage.id, version);
@@ -150,6 +168,10 @@ export default function ImageEditor() {
             <div className="text-center">
               <h2 className="text-2xl font-semibold mb-2">Edit Complete!</h2>
               <p className="text-gray-400">Your edited image is ready.</p>
+              <p className="text-xs text-gray-500 mt-2">
+                Generated with {modelOptions.find((m) => m.value === selectedModel)?.label}
+                ({modelOptions.find((m) => m.value === selectedModel)?.nickname})
+              </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
@@ -211,6 +233,31 @@ export default function ImageEditor() {
                 onGenerate={handleGenerate}
                 isProcessing={editorState.isProcessing}
               />
+
+              {/* Model Selector */}
+              <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                <label className="block mb-3">
+                  <div className="font-medium text-gray-200 mb-1">AI Model</div>
+                  <div className="text-xs text-gray-400 mb-3">
+                    Choose the model for image editing
+                  </div>
+                </label>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={editorState.isProcessing}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                >
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} ({option.nickname})
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 text-xs text-gray-400">
+                  {modelOptions.find((m) => m.value === selectedModel)?.description}
+                </div>
+              </div>
 
               {/* EXIF Preservation Toggle */}
               <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">

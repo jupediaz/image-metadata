@@ -56,6 +56,7 @@ export interface GeminiEditApiRequest {
   prompt: string;
   maskDataUrl?: string;       // data:image/png;base64,...
   preserveExif: boolean;
+  model?: string;             // Gemini model to use (e.g., 'gemini-3-flash-preview')
 }
 
 export interface GeminiEditApiResponse {

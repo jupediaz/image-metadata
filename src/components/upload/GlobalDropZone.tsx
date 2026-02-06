@@ -7,6 +7,8 @@ import { useToast } from '@/components/ui/Toast';
 export function GlobalDropZone({ children }: { children: React.ReactNode }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
   const sessionId = useImageStore((s) => s.sessionId);
   const addImages = useImageStore((s) => s.addImages);
   const view = useImageStore((s) => s.view);
@@ -17,29 +19,66 @@ export function GlobalDropZone({ children }: { children: React.ReactNode }) {
 
     setIsUploading(true);
     setIsDragging(false);
+    setUploadProgress(0);
+    setProgressText(`Preparando ${files.length} archivo${files.length > 1 ? 's' : ''}...`);
 
     try {
       const formData = new FormData();
       formData.append('sessionId', sessionId);
       files.forEach((f) => formData.append('files', f));
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+      setUploadProgress(10);
+      setProgressText(`Subiendo ${files.length} archivo${files.length > 1 ? 's' : ''}...`);
+
+      // Use XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 70) + 10; // 10-80%
+          setUploadProgress(percentComplete);
+        }
       });
 
-      if (!res.ok) {
-        throw new Error('Error en el upload');
-      }
+      // Handle completion
+      const uploadPromise = new Promise<string>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.responseText);
+          } else {
+            reject(new Error('Error en el upload'));
+          }
+        });
 
-      const data = await res.json();
+        xhr.addEventListener('error', () => {
+          reject(new Error('Error de red'));
+        });
+      });
+
+      xhr.open('POST', '/api/upload');
+      xhr.send(formData);
+
+      setUploadProgress(80);
+      setProgressText('Procesando metadatos...');
+
+      const responseText = await uploadPromise;
+      const data = JSON.parse(responseText);
+
+      setUploadProgress(100);
+      setProgressText('¡Completado!');
+
       addImages(data.images);
       toast('success', `${data.images.length} imagen${data.images.length > 1 ? 'es' : ''} añadida${data.images.length > 1 ? 's' : ''}`);
     } catch (err) {
       toast('error', 'Error al subir las imágenes');
       console.error(err);
     } finally {
-      setIsUploading(false);
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setProgressText('');
+      }, 500);
     }
   };
 
@@ -132,12 +171,27 @@ export function GlobalDropZone({ children }: { children: React.ReactNode }) {
       {/* Upload progress overlay */}
       {isUploading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
-            <div className="flex items-center gap-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="text-gray-900 dark:text-gray-100 font-medium">
-                Subiendo imágenes...
-              </p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 min-w-[320px]">
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="text-gray-900 dark:text-gray-100 font-medium">
+                  {progressText || 'Subiendo imágenes...'}
+                </p>
+              </div>
+              {/* Progress bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                  <span>Progreso</span>
+                  <span className="font-medium">{uploadProgress}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

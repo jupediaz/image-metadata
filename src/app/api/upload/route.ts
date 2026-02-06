@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
         await saveThumbnail(sessionId, fileId, thumbBuffer);
       }
 
-      // Read metadata
-      const metadata = await readAllMetadata(buffer);
+      // Read metadata (pass format for HEIC handling)
+      const metadata = await readAllMetadata(buffer, format);
 
       const imageFile: ImageFile = {
         id: fileId,

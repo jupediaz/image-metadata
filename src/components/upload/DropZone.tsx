@@ -9,6 +9,7 @@ export function DropZone() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sessionId = useImageStore((s) => s.sessionId);
@@ -20,31 +21,67 @@ export function DropZone() {
     if (fileArray.length === 0) return;
 
     setIsUploading(true);
-    setProgress(`Procesando ${fileArray.length} archivo${fileArray.length > 1 ? 's' : ''}...`);
+    setUploadProgress(0);
+    setProgress(`Preparando ${fileArray.length} archivo${fileArray.length > 1 ? 's' : ''}...`);
 
     try {
       const formData = new FormData();
       formData.append('sessionId', sessionId);
       fileArray.forEach((f) => formData.append('files', f));
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+      // Simulate initial progress
+      setUploadProgress(10);
+      setProgress(`Subiendo ${fileArray.length} archivo${fileArray.length > 1 ? 's' : ''}...`);
+
+      // Use XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 70) + 10; // 10-80%
+          setUploadProgress(percentComplete);
+        }
       });
 
-      if (!res.ok) {
-        throw new Error('Error en el upload');
-      }
+      // Handle completion
+      const uploadPromise = new Promise<string>((resolve, reject) => {
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.responseText);
+          } else {
+            reject(new Error('Error en el upload'));
+          }
+        });
 
-      const data = await res.json();
+        xhr.addEventListener('error', () => {
+          reject(new Error('Error de red'));
+        });
+      });
+
+      xhr.open('POST', '/api/upload');
+      xhr.send(formData);
+
+      setUploadProgress(80);
+      setProgress('Procesando metadatos...');
+
+      const responseText = await uploadPromise;
+      const data = JSON.parse(responseText);
+
+      setUploadProgress(100);
+      setProgress('¡Completado!');
+
       addImages(data.images);
       toast('success', `${data.images.length} imagen${data.images.length > 1 ? 'es' : ''} cargada${data.images.length > 1 ? 's' : ''}`);
     } catch (err) {
       toast('error', 'Error al subir las imagenes');
       console.error(err);
     } finally {
-      setIsUploading(false);
-      setProgress('');
+      setTimeout(() => {
+        setIsUploading(false);
+        setProgress('');
+        setUploadProgress(0);
+      }, 500);
     }
   };
 
@@ -90,10 +127,22 @@ export function DropZone() {
       `}
     >
       {isUploading ? (
-        <>
+        <div className="w-full max-w-sm space-y-4">
           <Spinner size="lg" />
-          <p className="text-sm text-gray-600 dark:text-gray-400">{progress}</p>
-        </>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+              <span>{progress}</span>
+              <span className="font-medium">{uploadProgress}%</span>
+            </div>
+            {/* Progress bar */}
+            <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300 ease-out"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">

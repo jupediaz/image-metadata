@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: GeminiEditApiRequest = await request.json();
-    const { sessionId, imageId, prompt, maskDataUrl, preserveExif } = body;
+    const { sessionId, imageId, prompt, maskDataUrl, preserveExif, model } = body;
 
     // Validation
     if (!sessionId || !imageId || !prompt) {
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
         imageBase64,
         prompt,
         maskBase64: maskDataUrl || undefined,
+        model: model || undefined,
       });
     } catch (error) {
       console.error('Gemini API error:', error);
