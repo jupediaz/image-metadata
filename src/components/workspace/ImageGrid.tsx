@@ -1,17 +1,24 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import { ImageFile } from '@/types/image';
 
 export function ImageGrid() {
+  const router = useRouter();
   const images = useImageStore((s) => s.images);
   const selectedIds = useImageStore((s) => s.selectedIds);
   const toggleSelection = useImageStore((s) => s.toggleSelection);
   const selectAll = useImageStore((s) => s.selectAll);
   const deselectAll = useImageStore((s) => s.deselectAll);
-  const setActiveImage = useImageStore((s) => s.setActiveImage);
   const removeImage = useImageStore((s) => s.removeImage);
   const sessionId = useImageStore((s) => s.sessionId);
+  const setActiveImage = useImageStore((s) => s.setActiveImage);
+
+  const handleOpen = (id: string) => {
+    setActiveImage(id);
+    router.push(`/image/${id}`);
+  };
 
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
@@ -85,7 +92,7 @@ export function ImageGrid() {
             image={image}
             selected={selectedIds.has(image.id)}
             onToggle={() => toggleSelection(image.id)}
-            onOpen={() => setActiveImage(image.id)}
+            onOpen={() => handleOpen(image.id)}
           />
         ))}
       </div>
@@ -104,7 +111,6 @@ function ImageCard({
   onToggle: () => void;
   onOpen: () => void;
 }) {
-  // Use thumbnail if available, otherwise use full image (for HEIC without thumbnail)
   const sessionId = useImageStore((s) => s.sessionId);
   const ext = image.format === 'jpeg' ? '.jpg' : `.${image.format}`;
   const imageUrl = image.thumbnailUrl || `/api/image?sessionId=${sessionId}&id=${image.id}&ext=${ext}`;

@@ -1,13 +1,19 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import InpaintingCanvas from './InpaintingCanvas';
 import PromptInput from './PromptInput';
 import { GeminiEditApiRequest, GeminiEditApiResponse } from '@/types/api';
 import { EditVersion } from '@/types/image';
 
-export default function ImageEditor() {
+interface ImageEditorProps {
+  imageId: string;
+}
+
+export default function ImageEditor({ imageId }: ImageEditorProps) {
+  const router = useRouter();
   const {
     editorState,
     sessionId,
@@ -44,12 +50,17 @@ export default function ImageEditor() {
     return null;
   }
 
-  const currentImage = images.find((img) => img.id === editorState.imageId);
+  const currentImage = images.find((img) => img.id === imageId);
   if (!currentImage) {
     return <div className="text-white">Image not found</div>;
   }
 
   const imageUrl = `/api/image?sessionId=${sessionId}&id=${currentImage.id}`;
+
+  const handleBack = () => {
+    cancelAiEdit();
+    router.push(`/image/${imageId}`);
+  };
 
   const handleGenerate = async () => {
     if (!editorState.prompt.trim()) return;
@@ -68,7 +79,6 @@ export default function ImageEditor() {
         model: selectedModel,
       };
 
-      // Get user's API key from localStorage if available
       const userApiKey = typeof window !== 'undefined'
         ? localStorage.getItem('gemini_api_key')
         : null;
@@ -93,7 +103,6 @@ export default function ImageEditor() {
         throw new Error(data.error || 'Failed to generate edit');
       }
 
-      // Save edit version
       const version: EditVersion = {
         id: data.newVersionId,
         timestamp: new Date(),
@@ -106,7 +115,6 @@ export default function ImageEditor() {
 
       saveEditVersion(currentImage.id, version);
 
-      // Show success and return to detail view
       setEditorPreview(data.editedImageUrl);
       setShowPreview(true);
     } catch (error) {
@@ -120,8 +128,8 @@ export default function ImageEditor() {
   };
 
   const handleAccept = () => {
-    // Already saved, just return to detail view
     cancelAiEdit();
+    router.push(`/image/${imageId}`);
   };
 
   const handleRefine = () => {
@@ -137,7 +145,7 @@ export default function ImageEditor() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => cancelAiEdit()}
+                onClick={handleBack}
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -207,7 +215,7 @@ export default function ImageEditor() {
                 Refine Further
               </button>
               <button
-                onClick={() => cancelAiEdit()}
+                onClick={handleBack}
                 className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors"
               >
                 Discard

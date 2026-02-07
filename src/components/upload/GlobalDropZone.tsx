@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, DragEvent, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import { useToast } from '@/components/ui/Toast';
 
@@ -11,7 +12,7 @@ export function GlobalDropZone({ children }: { children: React.ReactNode }) {
   const [progressText, setProgressText] = useState('');
   const sessionId = useImageStore((s) => s.sessionId);
   const addImages = useImageStore((s) => s.addImages);
-  const view = useImageStore((s) => s.view);
+  const pathname = usePathname();
   const { toast } = useToast();
 
   const handleFiles = async (files: File[]) => {
@@ -132,8 +133,10 @@ export function GlobalDropZone({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Don't show overlay on upload view
-  const showOverlay = isDragging && view !== 'upload';
+  // Don't show overlay on the gallery home page (which has the dropzone)
+  const isGalleryPage = pathname === '/';
+  const hasImages = useImageStore((s) => s.images.length > 0);
+  const showOverlay = isDragging && (hasImages || !isGalleryPage);
 
   return (
     <div

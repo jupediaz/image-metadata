@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Canvas, FabricImage, PencilBrush } from 'fabric';
+import { Canvas, FabricImage, PencilBrush, Point } from 'fabric';
 
 interface InpaintingCanvasProps {
   imageUrl: string;
@@ -136,7 +137,7 @@ export default function InpaintingCanvas({
     setZoom(newZoom);
 
     const center = canvas.getCenter();
-    canvas.zoomToPoint({ x: center.left, y: center.top }, newZoom);
+    canvas.zoomToPoint(new Point(center.left, center.top), newZoom);
     canvas.renderAll();
 
     console.log('Zoom changed:', newZoom);

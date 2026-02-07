@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { ImageFile, ImageMetadata, EditVersion } from '@/types/image';
 import { EditorState } from '@/types/gemini';
@@ -8,11 +9,13 @@ interface ImageStore {
   images: ImageFile[];
   selectedIds: Set<string>;
   activeImageId: string | null;
-  view: 'upload' | 'grid' | 'detail' | 'ai-editor';
   isEditing: boolean;
 
   // AI Editor state
   editorState: EditorState | null;
+
+  // Persistence
+  hydrate: (images: ImageFile[], sessionId?: string) => void;
 
   addImages: (files: ImageFile[]) => void;
   removeImage: (id: string) => void;
@@ -24,7 +27,6 @@ interface ImageStore {
   deselectAll: () => void;
   setActiveImage: (id: string | null) => void;
 
-  setView: (view: 'upload' | 'grid' | 'detail' | 'ai-editor') => void;
   setEditing: (editing: boolean) => void;
 
   // AI Editor actions
@@ -41,163 +43,162 @@ interface ImageStore {
   reset: () => void;
 }
 
-export const useImageStore = create<ImageStore>((set) => ({
-  sessionId: uuidv4(),
-  images: [],
-  selectedIds: new Set<string>(),
-  activeImageId: null,
-  view: 'upload',
-  isEditing: false,
-  editorState: null,
+export const useImageStore = create<ImageStore>()(
+  subscribeWithSelector((set) => ({
+    sessionId: uuidv4(),
+    images: [],
+    selectedIds: new Set<string>(),
+    activeImageId: null,
+    isEditing: false,
+    editorState: null,
 
-  addImages: (files) =>
-    set((state) => ({
-      images: [...state.images, ...files],
-      view: 'grid',
-    })),
+    hydrate: (images, sessionId) =>
+      set((state) => ({
+        images,
+        sessionId: sessionId ?? state.sessionId,
+      })),
 
-  removeImage: (id) =>
-    set((state) => {
-      const newSelected = new Set(state.selectedIds);
-      newSelected.delete(id);
-      return {
-        images: state.images.filter((img) => img.id !== id),
-        selectedIds: newSelected,
-        activeImageId: state.activeImageId === id ? null : state.activeImageId,
-      };
-    }),
+    addImages: (files) =>
+      set((state) => ({
+        images: [...state.images, ...files],
+      })),
 
-  updateImage: (id, updates) =>
-    set((state) => ({
-      images: state.images.map((img) =>
-        img.id === id ? { ...img, ...updates } : img
-      ),
-    })),
-
-  updateMetadata: (id, metadata) =>
-    set((state) => ({
-      images: state.images.map((img) =>
-        img.id === id ? { ...img, metadata } : img
-      ),
-    })),
-
-  toggleSelection: (id) =>
-    set((state) => {
-      const newSelected = new Set(state.selectedIds);
-      if (newSelected.has(id)) {
+    removeImage: (id) =>
+      set((state) => {
+        const newSelected = new Set(state.selectedIds);
         newSelected.delete(id);
-      } else {
-        newSelected.add(id);
-      }
-      return { selectedIds: newSelected };
-    }),
+        return {
+          images: state.images.filter((img) => img.id !== id),
+          selectedIds: newSelected,
+          activeImageId: state.activeImageId === id ? null : state.activeImageId,
+        };
+      }),
 
-  selectAll: () =>
-    set((state) => ({
-      selectedIds: new Set(state.images.map((img) => img.id)),
-    })),
+    updateImage: (id, updates) =>
+      set((state) => ({
+        images: state.images.map((img) =>
+          img.id === id ? { ...img, ...updates } : img
+        ),
+      })),
 
-  deselectAll: () => set({ selectedIds: new Set() }),
+    updateMetadata: (id, metadata) =>
+      set((state) => ({
+        images: state.images.map((img) =>
+          img.id === id ? { ...img, metadata } : img
+        ),
+      })),
 
-  setActiveImage: (id) =>
-    set({
-      activeImageId: id,
-      view: id ? 'detail' : 'grid',
-      isEditing: false,
-    }),
+    toggleSelection: (id) =>
+      set((state) => {
+        const newSelected = new Set(state.selectedIds);
+        if (newSelected.has(id)) {
+          newSelected.delete(id);
+        } else {
+          newSelected.add(id);
+        }
+        return { selectedIds: newSelected };
+      }),
 
-  setView: (view) => set({ view }),
-  setEditing: (editing) => set({ isEditing: editing }),
+    selectAll: () =>
+      set((state) => ({
+        selectedIds: new Set(state.images.map((img) => img.id)),
+      })),
 
-  // AI Editor actions
-  startAiEdit: (imageId) =>
-    set({
-      editorState: {
-        imageId,
-        maskDataUrl: null,
-        prompt: '',
-        isProcessing: false,
-        previewUrl: null,
-        error: null,
-      },
-      view: 'ai-editor',
-      activeImageId: imageId,
-    }),
+    deselectAll: () => set({ selectedIds: new Set() }),
 
-  cancelAiEdit: () =>
-    set((state) => ({
-      editorState: null,
-      view: 'detail',
-      activeImageId: state.editorState?.imageId || state.activeImageId,
-    })),
+    setActiveImage: (id) =>
+      set({
+        activeImageId: id,
+        isEditing: false,
+      }),
 
-  setEditorMask: (maskDataUrl) =>
-    set((state) =>
-      state.editorState
-        ? { editorState: { ...state.editorState, maskDataUrl } }
-        : {}
-    ),
+    setEditing: (editing) => set({ isEditing: editing }),
 
-  setEditorPrompt: (prompt) =>
-    set((state) =>
-      state.editorState
-        ? { editorState: { ...state.editorState, prompt } }
-        : {}
-    ),
+    // AI Editor actions
+    startAiEdit: (imageId) =>
+      set({
+        editorState: {
+          imageId,
+          maskDataUrl: null,
+          prompt: '',
+          isProcessing: false,
+          previewUrl: null,
+          error: null,
+        },
+        activeImageId: imageId,
+      }),
 
-  setEditorProcessing: (isProcessing) =>
-    set((state) =>
-      state.editorState
-        ? { editorState: { ...state.editorState, isProcessing } }
-        : {}
-    ),
+    cancelAiEdit: () =>
+      set({
+        editorState: null,
+      }),
 
-  setEditorPreview: (previewUrl) =>
-    set((state) =>
-      state.editorState
-        ? { editorState: { ...state.editorState, previewUrl } }
-        : {}
-    ),
-
-  setEditorError: (error) =>
-    set((state) =>
-      state.editorState
-        ? { editorState: { ...state.editorState, error } }
-        : {}
-    ),
-
-  saveEditVersion: (imageId, version) =>
-    set((state) => ({
-      images: state.images.map((img) =>
-        img.id === imageId
-          ? {
-              ...img,
-              editHistory: [...(img.editHistory || []), version],
-              currentVersionIndex: (img.editHistory?.length || 0),
-            }
-          : img
+    setEditorMask: (maskDataUrl) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, maskDataUrl } }
+          : {}
       ),
-      editorState: null,
-      view: 'detail',
-    })),
 
-  revertToVersion: (imageId, versionIndex) =>
-    set((state) => ({
-      images: state.images.map((img) =>
-        img.id === imageId
-          ? { ...img, currentVersionIndex: versionIndex }
-          : img
+    setEditorPrompt: (prompt) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, prompt } }
+          : {}
       ),
-    })),
 
-  reset: () =>
-    set({
-      sessionId: uuidv4(),
-      images: [],
-      selectedIds: new Set<string>(),
-      activeImageId: null,
-      view: 'upload',
-      isEditing: false,
-      editorState: null,
-    }),
-}));
+    setEditorProcessing: (isProcessing) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, isProcessing } }
+          : {}
+      ),
+
+    setEditorPreview: (previewUrl) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, previewUrl } }
+          : {}
+      ),
+
+    setEditorError: (error) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, error } }
+          : {}
+      ),
+
+    saveEditVersion: (imageId, version) =>
+      set((state) => ({
+        images: state.images.map((img) =>
+          img.id === imageId
+            ? {
+                ...img,
+                editHistory: [...(img.editHistory || []), version],
+                currentVersionIndex: (img.editHistory?.length || 0),
+              }
+            : img
+        ),
+        editorState: null,
+      })),
+
+    revertToVersion: (imageId, versionIndex) =>
+      set((state) => ({
+        images: state.images.map((img) =>
+          img.id === imageId
+            ? { ...img, currentVersionIndex: versionIndex }
+            : img
+        ),
+      })),
+
+    reset: () =>
+      set({
+        sessionId: uuidv4(),
+        images: [],
+        selectedIds: new Set<string>(),
+        activeImageId: null,
+        isEditing: false,
+        editorState: null,
+      }),
+  }))
+);

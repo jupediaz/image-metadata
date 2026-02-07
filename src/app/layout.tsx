@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/Toast";
+import { PersistenceProvider } from "@/components/providers/PersistenceProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,7 +36,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-gray-950 min-h-dvh`}
       >
         <ToastProvider>
-          {children}
+          <PersistenceProvider>
+            {children}
+          </PersistenceProvider>
         </ToastProvider>
       </body>
     </html>
