@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       if (matchExt === '.heic' || matchExt === '.heif') {
         const jpegBuffer = await convertHeicToJpeg(matchPath);
 
-        return new Response(jpegBuffer, {
+        return new Response(new Uint8Array(jpegBuffer), {
           headers: {
             'Content-Type': 'image/jpeg',
             'Cache-Control': 'private, max-age=3600',
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     if (extLower === '.heic' || extLower === '.heif') {
       const jpegBuffer = await convertHeicToJpeg(filePath);
 
-      return new Response(jpegBuffer, {
+      return new Response(new Uint8Array(jpegBuffer), {
         headers: {
           'Content-Type': 'image/jpeg',
           'Cache-Control': 'private, max-age=3600',
