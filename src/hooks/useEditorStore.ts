@@ -18,7 +18,7 @@ interface EditorStoreState {
   currentActionIndex: number;
 
   // Canvas state
-  activeTool: 'select' | 'pan' | 'brush' | 'eraser' | 'lasso' | 'zoom';
+  activeTool: 'select' | 'pan' | 'brush' | 'eraser' | 'protect' | 'lasso' | 'zoom';
   brushSize: number;
   zoom: number;
 

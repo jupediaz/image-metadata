@@ -45,11 +45,22 @@ export async function editImageWithGemini(
 
   const parts: Array<{ inlineData: { mimeType: string; data: string } } | { text: string }> = [];
 
-  // Add the original image
+  // Add the original image (preserve format for quality)
   const imageData = params.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+  // Detect original mime type or default to PNG (lossless)
+  const mimeTypeMatch = params.imageBase64.match(/^data:(image\/\w+);base64,/);
+  const imageMimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
+
+  console.log('📤 Sending image to Gemini:', {
+    mimeType: imageMimeType,
+    dataSize: imageData.length,
+    hasMask: !!params.maskBase64,
+    model: modelName
+  });
+
   parts.push({
     inlineData: {
-      mimeType: 'image/jpeg',
+      mimeType: imageMimeType,
       data: imageData,
     },
   });
@@ -57,6 +68,12 @@ export async function editImageWithGemini(
   // Add mask if provided
   if (params.maskBase64) {
     const maskData = params.maskBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    console.log('🎭 Sending mask to Gemini:', {
+      maskSize: maskData.length,
+      maskMimeType: 'image/png'
+    });
+
     parts.push({
       inlineData: {
         mimeType: 'image/png',
@@ -64,10 +81,27 @@ export async function editImageWithGemini(
       },
     });
     parts.push({
-      text: `The second image is a mask where white areas indicate regions to edit. Focus your edits only on the white regions. ${params.prompt}`,
+      text: [
+        'INPAINTING MODE: The second image is a binary inpainting mask.',
+        'WHITE areas = regions you MUST edit according to the instruction below.',
+        'BLACK areas = regions you MUST preserve EXACTLY as they are — do not alter, enhance, recolor, or change any pixel in the black/unmasked areas.',
+        'Keep the same lighting, perspective, style, and resolution. The edit should blend seamlessly into the preserved areas.',
+        'CRITICAL: Maintain the exact same image quality, sharpness, and detail level as the original image. Do not compress, blur, or reduce quality.',
+        'Output the result in the same format and quality as the input image.',
+        '',
+        `Edit instruction for the masked (white) area: ${params.prompt}`,
+      ].join('\n'),
     });
   } else {
-    parts.push({ text: params.prompt });
+    console.log('📝 No mask provided, applying prompt to entire image');
+    parts.push({
+      text: [
+        params.prompt,
+        '',
+        'CRITICAL: Maintain the exact same image quality, sharpness, and detail level as the original image.',
+        'Output the result in the same format and quality as the input image.',
+      ].join('\n')
+    });
   }
 
   const result = await model.generateContent(parts);

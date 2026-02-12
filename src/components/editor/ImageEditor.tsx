@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
+import { useProgress } from '@/hooks/useProgress';
+import { persistEditVersion } from '@/lib/persistence';
 import InpaintingCanvas from './InpaintingCanvas';
 import PromptInput from './PromptInput';
 import { GeminiEditApiRequest, GeminiEditApiResponse } from '@/types/api';
@@ -27,22 +29,24 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
     saveEditVersion,
   } = useImageStore();
 
+  const { startProgress, updateProgress, finishProgress, failProgress } = useProgress();
   const [preserveExif, setPreserveExif] = useState(true);
-  const [showPreview, setShowPreview] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+  // CRITICAL: Default model MUST be Pro Image
+  const [selectedModel, setSelectedModel] = useState('gemini-3-pro-image-preview');
+  const [safeZoneMask, setSafeZoneMask] = useState<string | null>(null);
 
   const modelOptions = [
     {
-      value: 'gemini-2.5-flash-image',
-      label: 'Gemini 2.5 Flash Image',
-      nickname: 'Nano Banana',
-      description: 'Fast image generation and editing (recommended)',
+      value: 'gemini-3-pro-image-preview',
+      label: 'Pro Image',
+      nickname: 'Nano Banana Pro',
+      description: 'Highest quality (slower)',
     },
     {
-      value: 'gemini-3-pro-image-preview',
-      label: 'Gemini 3 Pro Image Preview',
-      nickname: 'Nano Banana Pro',
-      description: 'Highest quality image generation (slower)',
+      value: 'gemini-2.5-flash-image',
+      label: 'Flash Image',
+      nickname: 'Nano Banana',
+      description: 'Fast generation (recommended)',
     },
   ];
 
@@ -69,12 +73,17 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
     setEditorError(null);
     setEditorPreview(null);
 
+    const progressId = startProgress('ai-edit', 'Generando edición con IA...');
+
     try {
+      updateProgress(progressId, 10, 'Preparando solicitud...');
+
       const request: GeminiEditApiRequest = {
         sessionId,
         imageId: currentImage.id,
         prompt: editorState.prompt,
         maskDataUrl: editorState.maskDataUrl || undefined,
+        safeZoneMaskDataUrl: safeZoneMask || undefined,
         preserveExif,
         model: selectedModel,
       };
@@ -91,17 +100,23 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
         headers['x-gemini-api-key'] = userApiKey;
       }
 
+      updateProgress(progressId, 20, 'Enviando a Gemini AI...');
+
       const response = await fetch('/api/gemini/edit', {
         method: 'POST',
         headers,
         body: JSON.stringify(request),
       });
 
+      updateProgress(progressId, 80, 'Procesando resultado...');
+
       const data: GeminiEditApiResponse = await response.json();
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to generate edit');
       }
+
+      updateProgress(progressId, 90, 'Guardando versión...');
 
       const version: EditVersion = {
         id: data.newVersionId,
@@ -111,31 +126,45 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
         imageUrl: data.editedImageUrl,
         thumbnailUrl: data.thumbnailUrl,
         model: selectedModel,
+        processingTimeMs: data.processingTimeMs,
+        originalExifDump: data.exifDump,
       };
 
+      // Save to Zustand store
       saveEditVersion(currentImage.id, version);
 
+      // Persist to IndexedDB
+      try {
+        updateProgress(progressId, 95, 'Persistiendo en IndexedDB...');
+
+        const [versionBlob, thumbnailBlob] = await Promise.all([
+          fetch(data.editedImageUrl).then((r) => r.blob()),
+          data.thumbnailUrl ? fetch(data.thumbnailUrl).then((r) => r.blob()) : Promise.resolve(undefined),
+        ]);
+
+        await persistEditVersion(currentImage.id, version, versionBlob, thumbnailBlob);
+        console.log(`✅ Persisted edit version: ${version.id}`);
+      } catch (persistError) {
+        console.error('Failed to persist edit version:', persistError);
+        // Don't fail the whole operation if persistence fails
+      }
+
       setEditorPreview(data.editedImageUrl);
-      setShowPreview(true);
+
+      finishProgress(progressId);
+
+      // Redirect to comparison view with fromEditor flag
+      router.push(`/image/${imageId}/compare?left=original&right=model-${selectedModel}&fromEditor=true`);
     } catch (error) {
       console.error('Error generating edit:', error);
-      setEditorError(
-        error instanceof Error ? error.message : 'Failed to generate edit'
-      );
+      const errorMsg = error instanceof Error ? error.message : 'Failed to generate edit';
+      setEditorError(errorMsg);
+      failProgress(progressId, errorMsg);
     } finally {
       setEditorProcessing(false);
     }
   };
 
-  const handleAccept = () => {
-    cancelAiEdit();
-    router.push(`/image/${imageId}`);
-  };
-
-  const handleRefine = () => {
-    setShowPreview(false);
-    setEditorPreview(null);
-  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -170,66 +199,13 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {showPreview && editorState.previewUrl ? (
-          /* Preview Mode */
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-semibold mb-2">Edit Complete!</h2>
-              <p className="text-gray-400">Your edited image is ready.</p>
-              <p className="text-xs text-gray-500 mt-2">
-                Generated with {modelOptions.find((m) => m.value === selectedModel)?.label}
-                ({modelOptions.find((m) => m.value === selectedModel)?.nickname})
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <h3 className="text-sm font-medium text-gray-400 mb-2">Original</h3>
-                <img
-                  src={imageUrl}
-                  alt="Original"
-                  className="w-full rounded-lg border border-gray-700"
-                />
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-gray-400 mb-2">Edited</h3>
-                <img
-                  src={editorState.previewUrl}
-                  alt="Edited"
-                  className="w-full rounded-lg border border-gray-700"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={handleAccept}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors"
-              >
-                Accept & Return
-              </button>
-              <button
-                onClick={handleRefine}
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
-              >
-                Refine Further
-              </button>
-              <button
-                onClick={handleBack}
-                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition-colors"
-              >
-                Discard
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Editor Mode */
-          <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-3 gap-8">
             {/* Left: Canvas */}
             <div className="lg:col-span-2">
               <InpaintingCanvas
                 imageUrl={imageUrl}
                 onMaskChange={(maskDataUrl) => setEditorMask(maskDataUrl)}
+                onSafeZoneMaskChange={(maskDataUrl) => setSafeZoneMask(maskDataUrl)}
               />
             </div>
 
@@ -240,6 +216,7 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
                 onChange={(prompt) => setEditorPrompt(prompt)}
                 onGenerate={handleGenerate}
                 isProcessing={editorState.isProcessing}
+                processingModel={modelOptions.find(m => m.value === selectedModel)?.nickname}
               />
 
               {/* Model Selector */}
@@ -300,7 +277,7 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

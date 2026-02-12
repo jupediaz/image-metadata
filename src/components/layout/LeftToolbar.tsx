@@ -40,19 +40,6 @@ const tools: ToolDef[] = [
     ),
   },
   {
-    id: 'brush',
-    label: 'Brush',
-    shortcut: 'B',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <path d="M12 19l7-7 3 3-7 7-3-3z" />
-        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-        <path d="M2 2l7.586 7.586" />
-        <circle cx="11" cy="11" r="2" />
-      </svg>
-    ),
-  },
-  {
     id: 'eraser',
     label: 'Eraser',
     shortcut: 'E',
@@ -122,7 +109,7 @@ export default function LeftToolbar({
       <div className="w-6 h-px bg-[#3c3c3c] my-2" />
 
       {/* Brush size indicator */}
-      {(activeTool === 'brush' || activeTool === 'eraser') && (
+      {(activeTool === 'brush' || activeTool === 'protect' || activeTool === 'eraser') && (
         <div className="flex flex-col items-center gap-1 px-1">
           <div
             className="rounded-full bg-white/50 border border-white/30"

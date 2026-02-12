@@ -1,29 +1,30 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import { useEditorStore } from '@/hooks/useEditorStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { persistImageMetadata } from '@/lib/persistence';
 import TopMenuBar from './TopMenuBar';
 import LeftToolbar from './LeftToolbar';
 import RightPanel from './RightPanel';
 import BottomStatusBar from './BottomStatusBar';
 import PanelResizer from './PanelResizer';
 import KeyboardShortcutsOverlay from './KeyboardShortcutsOverlay';
-import EditorCanvas from '../canvas/EditorCanvas';
+import EditorCanvas, { type EditorCanvasHandle } from '../canvas/EditorCanvas';
 
 interface EditorShellProps {
   imageId: string;
 }
 
-export type EditorTool = 'select' | 'pan' | 'brush' | 'eraser' | 'lasso' | 'zoom';
+export type EditorTool = 'select' | 'pan' | 'brush' | 'eraser' | 'protect' | 'lasso' | 'zoom';
 
 export default function EditorShell({ imageId }: EditorShellProps) {
   const router = useRouter();
+  const canvasRef = useRef<EditorCanvasHandle>(null);
   const images = useImageStore((s) => s.images);
   const sessionId = useImageStore((s) => s.sessionId);
-  const cancelAiEdit = useImageStore((s) => s.cancelAiEdit);
 
   const editorStore = useEditorStore();
   const image = images.find((img) => img.id === imageId);
@@ -41,29 +42,37 @@ export default function EditorShell({ imageId }: EditorShellProps) {
   // Keyboard shortcuts
   useKeyboardShortcuts({ enabled: true });
 
-  // Listen for Escape
+  // Safe back: persist state, then navigate
+  const handleBack = useCallback(() => {
+    // Persist the image's current edit history to IndexedDB
+    if (image?.editHistory) {
+      persistImageMetadata(imageId, {
+        editHistory: JSON.stringify(image.editHistory),
+        currentVersionIndex: image.currentVersionIndex ?? -1,
+      });
+    }
+    router.push(`/image/${imageId}`);
+  }, [image, imageId, router]);
+
+  // Listen for Escape -> safe back
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
-          cancelAiEdit();
-          router.push(`/image/${imageId}`);
+          handleBack();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [imageId, cancelAiEdit, router]);
+  }, [handleBack]);
 
   if (!image) return null;
 
-  const imageUrl = `/api/image?sessionId=${sessionId}&id=${image.id}`;
-
-  const handleBack = () => {
-    cancelAiEdit();
-    router.push(`/image/${imageId}`);
-  };
+  // Resolve image URL: if viewing an edit version, show that version
+  const currentVersion = image.editHistory?.[image.currentVersionIndex ?? -1];
+  const imageUrl = currentVersion?.imageUrl || `/api/image?sessionId=${sessionId}&id=${image.id}`;
 
   return (
     <>
@@ -82,6 +91,10 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           onRedo={() => editorStore.redo()}
           canUndo={editorStore.canUndo()}
           canRedo={editorStore.canRedo()}
+          onExport={() => canvasRef.current?.exportImage()}
+          activeTool={editorStore.activeTool}
+          onToolChange={editorStore.setTool}
+          brushSize={editorStore.brushSize}
         />
 
         {/* Body */}
@@ -102,6 +115,7 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           {/* Canvas Area */}
           <div className="relative overflow-hidden bg-[#2d2d2d]">
             <EditorCanvas
+              ref={canvasRef}
               imageUrl={imageUrl}
               activeTool={editorStore.activeTool}
               brushSize={editorStore.brushSize}
@@ -133,6 +147,9 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           imageWidth={image.width}
           imageHeight={image.height}
           cursorPos={cursorPos}
+          onFitAll={() => canvasRef.current?.fitAll()}
+          onFitWidth={() => canvasRef.current?.fitWidth()}
+          onFitHeight={() => canvasRef.current?.fitHeight()}
         />
       </div>
 

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Canvas, FabricImage, PencilBrush, Point } from 'fabric';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { Canvas, FabricImage, PencilBrush, Point, Rect } from 'fabric';
 import { useImageStore } from '@/hooks/useImageStore';
 import { type EditorTool } from '../layout/EditorShell';
 
@@ -15,66 +15,192 @@ interface EditorCanvasProps {
   onCursorMove: (pos: { x: number; y: number } | null) => void;
 }
 
-export default function EditorCanvas({
-  imageUrl,
-  activeTool,
-  brushSize,
-  zoom,
-  onZoomChange,
-  onCursorMove,
-}: EditorCanvasProps) {
+export interface EditorCanvasHandle {
+  fitAll: () => void;
+  fitWidth: () => void;
+  fitHeight: () => void;
+  exportImage: () => void;
+}
+
+const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function EditorCanvas(
+  { imageUrl, activeTool, brushSize, zoom, onZoomChange, onCursorMove },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<Canvas | null>(null);
+  const imageBoundsRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
+  const imageClipRef = useRef<Rect | null>(null);
+  const activeToolRef = useRef<EditorTool>(activeTool);
   const [canvasReady, setCanvasReady] = useState(false);
 
-  const setEditorMask = useImageStore((s) => s.setEditorMask);
+  const setEditorInpaintMask = useImageStore((s) => s.setEditorInpaintMask);
+  const setEditorProtectMask = useImageStore((s) => s.setEditorProtectMask);
 
-  // Export mask from canvas paths
-  const exportMask = useCallback(() => {
+  // Keep activeToolRef in sync
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+
+  // Export dual masks from canvas paths
+  const exportMasks = useCallback(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
     const objects = canvas.getObjects();
     if (objects.length === 0) {
-      setEditorMask(null);
+      setEditorInpaintMask(null);
+      setEditorProtectMask(null);
       return;
     }
 
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = canvas.width || 800;
-    maskCanvas.height = canvas.height || 600;
-    const ctx = maskCanvas.getContext('2d');
-    if (!ctx) return;
+    // Separate paths by type (inpaint vs protect)
+    const inpaintPaths = objects.filter((obj: any) => obj.type === 'path' && obj.maskType === 'inpaint');
+    const protectPaths = objects.filter((obj: any) => obj.type === 'path' && obj.maskType === 'protect');
 
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    // Create inpaint mask (green zones)
+    if (inpaintPaths.length > 0) {
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = canvas.width || 800;
+      maskCanvas.height = canvas.height || 600;
+      const ctx = maskCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
-    objects.forEach((obj) => {
-      if (obj.type === 'path') {
-        const path = obj as any;
-        ctx.lineWidth = path.strokeWidth || brushSize;
-        ctx.save();
-        ctx.beginPath();
-        const pathData = path.path;
-        if (pathData) {
-          pathData.forEach((segment: any) => {
-            const cmd = segment[0];
-            if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
-            else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
-            else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
-          });
-          ctx.stroke();
-        }
-        ctx.restore();
+        inpaintPaths.forEach((obj) => {
+          const path = obj as any;
+          ctx.lineWidth = path.strokeWidth || brushSize;
+          ctx.save();
+          ctx.beginPath();
+          const pathData = path.path;
+          if (pathData) {
+            pathData.forEach((segment: any) => {
+              const cmd = segment[0];
+              if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
+              else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
+              else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
+            });
+            ctx.stroke();
+          }
+          ctx.restore();
+        });
+
+        setEditorInpaintMask(maskCanvas.toDataURL('image/png'));
       }
-    });
+    } else {
+      setEditorInpaintMask(null);
+    }
 
-    setEditorMask(maskCanvas.toDataURL('image/png'));
-  }, [brushSize, setEditorMask]);
+    // Create protect mask (red zones)
+    if (protectPaths.length > 0) {
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = canvas.width || 800;
+      maskCanvas.height = canvas.height || 600;
+      const ctx = maskCanvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        protectPaths.forEach((obj) => {
+          const path = obj as any;
+          ctx.lineWidth = path.strokeWidth || brushSize;
+          ctx.save();
+          ctx.beginPath();
+          const pathData = path.path;
+          if (pathData) {
+            pathData.forEach((segment: any) => {
+              const cmd = segment[0];
+              if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
+              else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
+              else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
+            });
+            ctx.stroke();
+          }
+          ctx.restore();
+        });
+
+        setEditorProtectMask(maskCanvas.toDataURL('image/png'));
+      }
+    } else {
+      setEditorProtectMask(null);
+    }
+  }, [brushSize, setEditorInpaintMask, setEditorProtectMask]);
+
+  // Fit helpers
+  const fitAll = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    canvas.renderAll();
+    onZoomChange(1);
+  }, [onZoomChange]);
+
+  const fitWidth = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const bounds = imageBoundsRef.current;
+    if (bounds.width === 0) return;
+
+    const containerW = container.clientWidth;
+    const containerH = container.clientHeight;
+    const newZoom = (containerW * 0.95) / bounds.width;
+
+    const imgCenterX = bounds.left + bounds.width / 2;
+    const imgCenterY = bounds.top + bounds.height / 2;
+    const panX = containerW / 2 - imgCenterX * newZoom;
+    const panY = containerH / 2 - imgCenterY * newZoom;
+
+    canvas.setViewportTransform([newZoom, 0, 0, newZoom, panX, panY]);
+    canvas.renderAll();
+    onZoomChange(newZoom);
+  }, [onZoomChange]);
+
+  const fitHeight = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const bounds = imageBoundsRef.current;
+    if (bounds.height === 0) return;
+
+    const containerW = container.clientWidth;
+    const containerH = container.clientHeight;
+    const newZoom = (containerH * 0.95) / bounds.height;
+
+    const imgCenterX = bounds.left + bounds.width / 2;
+    const imgCenterY = bounds.top + bounds.height / 2;
+    const panX = containerW / 2 - imgCenterX * newZoom;
+    const panY = containerH / 2 - imgCenterY * newZoom;
+
+    canvas.setViewportTransform([newZoom, 0, 0, newZoom, panX, panY]);
+    canvas.renderAll();
+    onZoomChange(newZoom);
+  }, [onZoomChange]);
+
+  const exportImage = useCallback(() => {
+    // Download the current image
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = 'image-export.png';
+    link.click();
+  }, [imageUrl]);
+
+  // Expose imperative methods
+  useImperativeHandle(ref, () => ({ fitAll, fitWidth, fitHeight, exportImage }), [
+    fitAll,
+    fitWidth,
+    fitHeight,
+    exportImage,
+  ]);
 
   // Initialize canvas
   useEffect(() => {
@@ -98,27 +224,44 @@ export default function EditorCanvas({
 
       const scale = Math.min(
         (w * 0.9) / (img.width || 1),
-        (h * 0.9) / (img.height || 1)
+        (h * 0.9) / (img.height || 1),
       );
+
+      const imgLeft = (w - (img.width || 0) * scale) / 2;
+      const imgTop = (h - (img.height || 0) * scale) / 2;
+      const imgW = (img.width || 0) * scale;
+      const imgH = (img.height || 0) * scale;
 
       img.scale(scale);
       img.set({
-        left: (w - (img.width || 0) * scale) / 2,
-        top: (h - (img.height || 0) * scale) / 2,
+        left: imgLeft,
+        top: imgTop,
         selectable: false,
         evented: false,
         hasControls: false,
         hasBorders: false,
       });
 
+      // Store image bounds for fit operations and path clipping
+      imageBoundsRef.current = { left: imgLeft, top: imgTop, width: imgW, height: imgH };
+
+      // Create a clip rect matching the image area (used for each drawn path)
+      imageClipRef.current = new Rect({
+        left: imgLeft,
+        top: imgTop,
+        width: imgW,
+        height: imgH,
+        absolutePositioned: true,
+      });
+
       canvas.backgroundImage = img;
       canvas.renderAll();
 
-      // Start in drawing mode
+      // Start in drawing mode with green brush (inpaint)
       canvas.isDrawingMode = true;
       const brush = new PencilBrush(canvas);
       brush.width = brushSize;
-      brush.color = 'rgba(255, 0, 0, 0.7)';
+      brush.color = 'rgba(0, 255, 0, 0.7)'; // Green for inpaint zones
       brush.strokeLineCap = 'round';
       brush.strokeLineJoin = 'round';
       canvas.freeDrawingBrush = brush;
@@ -138,8 +281,26 @@ export default function EditorCanvas({
     const ro = new ResizeObserver(handleResize);
     ro.observe(container);
 
-    // Path created -> export mask
-    canvas.on('path:created', () => exportMask());
+    // Path created -> tag with mask type, clip to image area, export masks
+    canvas.on('path:created', (e: any) => {
+      const path = e.path;
+      if (path) {
+        // Tag path with mask type based on active tool
+        const tool = activeToolRef.current;
+        if (tool === 'brush') {
+          path.maskType = 'inpaint';
+        } else if (tool === 'protect') {
+          path.maskType = 'protect';
+        }
+
+        // Clip to image area
+        if (imageClipRef.current) {
+          path.clipPath = imageClipRef.current;
+        }
+        canvas.renderAll();
+      }
+      exportMasks();
+    });
 
     return () => {
       ro.disconnect();
@@ -152,7 +313,7 @@ export default function EditorCanvas({
     const canvas = fabricCanvasRef.current;
     if (!canvas || !canvasReady) return;
 
-    // Remove custom pan handlers
+    // Remove custom handlers
     canvas.off('mouse:down');
     canvas.off('mouse:move');
     canvas.off('mouse:up');
@@ -164,21 +325,18 @@ export default function EditorCanvas({
       canvas.defaultCursor = 'default';
       canvas.hoverCursor = 'move';
 
-      // Make all drawn paths selectable and movable
       canvas.getObjects().forEach((obj) => {
         obj.set({ selectable: true, evented: true, hasControls: true, hasBorders: true });
       });
       canvas.renderAll();
 
-      // Re-export mask when objects are moved/scaled
-      canvas.on('object:modified', () => exportMask());
-    } else if (activeTool === 'brush' || activeTool === 'eraser') {
+      canvas.on('object:modified', () => exportMasks());
+    } else if (activeTool === 'brush' || activeTool === 'protect' || activeTool === 'eraser') {
       canvas.isDrawingMode = true;
       canvas.selection = false;
       canvas.defaultCursor = 'crosshair';
       canvas.discardActiveObject();
 
-      // Lock all objects so they don't interfere with drawing
       canvas.getObjects().forEach((obj) => {
         obj.set({ selectable: false, evented: false });
       });
@@ -187,9 +345,15 @@ export default function EditorCanvas({
       if (canvas.freeDrawingBrush) {
         const brush = canvas.freeDrawingBrush as PencilBrush;
         brush.width = brushSize;
-        brush.color = activeTool === 'brush'
-          ? 'rgba(255, 0, 0, 0.7)'
-          : 'rgba(0, 0, 0, 0.7)';
+
+        // Set color based on tool: green for inpaint, red for protect, black for eraser
+        if (activeTool === 'brush') {
+          brush.color = 'rgba(0, 255, 0, 0.7)'; // Green - zones where AI CAN edit
+        } else if (activeTool === 'protect') {
+          brush.color = 'rgba(255, 0, 0, 0.7)'; // Red - zones where AI CANNOT edit
+        } else {
+          brush.color = 'rgba(0, 0, 0, 0.7)'; // Black - eraser
+        }
       }
     } else if (activeTool === 'pan') {
       canvas.isDrawingMode = false;
@@ -243,7 +407,7 @@ export default function EditorCanvas({
       canvas.selection = false;
       canvas.defaultCursor = 'default';
     }
-  }, [activeTool, brushSize, canvasReady, exportMask]);
+  }, [activeTool, brushSize, canvasReady, exportMasks]);
 
   // Delete/Backspace to remove selected objects
   useEffect(() => {
@@ -262,12 +426,12 @@ export default function EditorCanvas({
       active.forEach((obj) => canvas.remove(obj));
       canvas.discardActiveObject();
       canvas.renderAll();
-      exportMask();
+      exportMasks();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTool, exportMask]);
+  }, [activeTool, exportMasks]);
 
   // Update brush size
   useEffect(() => {
@@ -306,12 +470,8 @@ export default function EditorCanvas({
 
     const handleMouseMove = (e: MouseEvent) => {
       const rect = container.getBoundingClientRect();
-      onCursorMove({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
+      onCursorMove({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     };
-
     const handleMouseLeave = () => onCursorMove(null);
 
     container.addEventListener('mousemove', handleMouseMove);
@@ -335,4 +495,6 @@ export default function EditorCanvas({
       )}
     </div>
   );
-}
+});
+
+export default EditorCanvas;

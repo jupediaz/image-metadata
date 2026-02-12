@@ -20,7 +20,7 @@ export async function generateThumbnail(buffer: Buffer, format?: string): Promis
 
         // Convert using ImageMagick
         await execAsync(
-          `convert "${tempInput}" -auto-orient -thumbnail 300x300^ -gravity center -extent 300x300 -quality 80 "${tempOutput}"`
+          `magick "${tempInput}" -auto-orient -thumbnail 300x300^ -gravity center -extent 300x300 -quality 80 "${tempOutput}"`
         );
 
         // Read result
@@ -56,6 +56,9 @@ export async function getImageInfo(buffer: Buffer): Promise<{
   height: number;
   format: string;
   size: number;
+  quality?: number;
+  colorSpace?: string;
+  bitDepth?: number;
 }> {
   const metadata = await sharp(buffer).metadata();
   return {
@@ -63,6 +66,9 @@ export async function getImageInfo(buffer: Buffer): Promise<{
     height: metadata.height ?? 0,
     format: metadata.format ?? 'unknown',
     size: buffer.length,
+    quality: (metadata as unknown as Record<string, unknown>).quality as number | undefined,
+    colorSpace: metadata.space,
+    bitDepth: metadata.depth ? parseInt(metadata.depth.replace('uchar', '8').replace('ushort', '16')) : undefined,
   };
 }
 
@@ -96,4 +102,81 @@ export async function convertImage(
 
 export async function stripMetadata(buffer: Buffer): Promise<Buffer> {
   return sharp(buffer).rotate().toBuffer();
+}
+
+/**
+ * Convert image to HEIC with precise quality control using ImageMagick
+ * This preserves the exact dimensions and attempts to match file size/quality
+ */
+export async function convertToHeicWithQuality(
+  buffer: Buffer,
+  options: {
+    width: number;
+    height: number;
+    quality?: number;
+    targetFileSize?: number;
+  }
+): Promise<Buffer> {
+  const { width, height, quality = 85, targetFileSize } = options;
+
+  const tempInput = path.join(os.tmpdir(), `convert-input-${Date.now()}.png`);
+  const tempOutput = path.join(os.tmpdir(), `convert-output-${Date.now()}.heic`);
+
+  try {
+    // Write buffer to temp file
+    await writeFile(tempInput, buffer);
+
+    // Build ImageMagick command with precise parameters
+    // -resize ensures exact dimensions
+    // -quality controls compression (0-100, where 100 is lossless)
+    const command = [
+      `magick "${tempInput}"`,
+      `-resize ${width}x${height}!`, // ! forces exact dimensions
+      `-quality ${quality}`,
+      `"${tempOutput}"`,
+    ].join(' ');
+
+    await execAsync(command);
+
+    // Read result
+    const heicBuffer = await readFile(tempOutput);
+
+    // If targetFileSize provided, adjust quality if needed
+    if (targetFileSize && Math.abs(heicBuffer.length - targetFileSize) > targetFileSize * 0.1) {
+      // File size differs by more than 10%, try to adjust quality
+      const ratio = targetFileSize / heicBuffer.length;
+      const adjustedQuality = Math.round(Math.max(50, Math.min(100, quality * ratio)));
+
+      if (adjustedQuality !== quality) {
+        console.log(`Adjusting HEIC quality from ${quality} to ${adjustedQuality} to match target size`);
+
+        const adjustedCommand = [
+          `magick "${tempInput}"`,
+          `-resize ${width}x${height}!`,
+          `-quality ${adjustedQuality}`,
+          `"${tempOutput}"`,
+        ].join(' ');
+
+        await execAsync(adjustedCommand);
+        const adjustedBuffer = await readFile(tempOutput);
+
+        // Cleanup
+        await unlink(tempInput).catch(() => {});
+        await unlink(tempOutput).catch(() => {});
+
+        return adjustedBuffer;
+      }
+    }
+
+    // Cleanup
+    await unlink(tempInput).catch(() => {});
+    await unlink(tempOutput).catch(() => {});
+
+    return heicBuffer;
+  } catch (error) {
+    // Cleanup on error
+    await unlink(tempInput).catch(() => {});
+    await unlink(tempOutput).catch(() => {});
+    throw error;
+  }
 }

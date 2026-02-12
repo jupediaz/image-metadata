@@ -23,6 +23,18 @@ function imageToDBImage(img: ImageFile): DBImage {
 
 function dbImageToImageFile(row: DBImage, blobUrls: Map<string, string>): ImageFile {
   const thumbUrl = blobUrls.get(`thumb_${row.id}`);
+
+  // Parse edit history and replace server URLs with blob URLs
+  let editHistory: EditVersion[] | undefined;
+  if (row.editHistory) {
+    const parsed = JSON.parse(row.editHistory) as EditVersion[];
+    editHistory = parsed.map((version) => ({
+      ...version,
+      imageUrl: blobUrls.get(version.id) || version.imageUrl,
+      thumbnailUrl: blobUrls.get(`thumb_${version.id}`) || version.thumbnailUrl,
+    }));
+  }
+
   return {
     id: row.id,
     filename: row.filename,
@@ -35,7 +47,7 @@ function dbImageToImageFile(row: DBImage, blobUrls: Map<string, string>): ImageF
     thumbnailUrl: thumbUrl,
     metadata: row.metadata ? JSON.parse(row.metadata) as ImageMetadata : null,
     status: row.status as ImageFile['status'],
-    editHistory: row.editHistory ? JSON.parse(row.editHistory) as EditVersion[] : undefined,
+    editHistory,
     currentVersionIndex: row.currentVersionIndex >= 0 ? row.currentVersionIndex : undefined,
   };
 }

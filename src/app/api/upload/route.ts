@@ -32,33 +32,45 @@ export async function POST(request: NextRequest) {
     const results: ImageFile[] = [];
 
     for (const file of files) {
+      console.log(`📤 Processing file: ${file.name}`);
+
       const ext = path.extname(file.name).toLowerCase();
       const isHeic = HEIC_EXTENSIONS.has(ext);
       const isAllowed = ALLOWED_TYPES.has(file.type) || isHeic;
 
       if (!isAllowed) {
+        console.log(`  ❌ Skipped: unsupported type ${file.type}`);
         continue; // skip unsupported files
       }
 
       const fileId = uuidv4();
       const buffer = Buffer.from(await file.arrayBuffer());
+      console.log(`  ✓ Buffer created: ${buffer.length} bytes`);
 
       // Get image info
+      console.log(`  🔍 Getting image info...`);
       const info = await getImageInfo(buffer);
       const format = isHeic ? 'heic' : info.format;
       const fileExt = formatToExt(format);
+      console.log(`  ✓ Format: ${format}, ${info.width}x${info.height}`);
 
       // Save file
+      console.log(`  💾 Saving file...`);
       await saveFile(sessionId, fileId, fileExt, buffer);
+      console.log(`  ✓ File saved`);
 
       // Generate thumbnail (pass format for HEIC handling)
+      console.log(`  🖼️  Generating thumbnail...`);
       const thumbBuffer = await generateThumbnail(buffer, format);
       if (thumbBuffer) {
         await saveThumbnail(sessionId, fileId, thumbBuffer);
+        console.log(`  ✓ Thumbnail saved`);
       }
 
-      // Read metadata (pass format for HEIC handling)
-      const metadata = await readAllMetadata(buffer, format);
+      // TEMPORARY: Skip metadata reading to unblock uploads
+      console.log(`  📋 Skipping metadata (temporary)...`);
+      const metadata = { exif: null, gps: null, dates: null, iptc: null, xmp: null, icc: null, raw: {} };
+      console.log(`  ✓ Using empty metadata`);
 
       const imageFile: ImageFile = {
         id: fileId,
@@ -72,9 +84,15 @@ export async function POST(request: NextRequest) {
         thumbnailUrl: thumbBuffer ? `/api/thumbnail?sessionId=${sessionId}&id=${fileId}` : undefined,
         metadata,
         status: 'ready',
+        // Preserve original file parameters for quality matching
+        originalFileSize: buffer.length,
+        originalQuality: info.quality,
+        originalColorSpace: info.colorSpace,
+        originalBitDepth: info.bitDepth,
       };
 
       results.push(imageFile);
+      console.log(`✅ Processed: ${file.name}`);
     }
 
     return NextResponse.json({ images: results, sessionId });

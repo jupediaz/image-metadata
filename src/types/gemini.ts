@@ -21,7 +21,8 @@ export interface MaskRegion {
 
 export interface EditorState {
   imageId: string;
-  maskDataUrl: string | null;
+  inpaintMaskDataUrl: string | null;  // Green zone - where AI CAN edit
+  protectMaskDataUrl: string | null;  // Red zone - where AI CANNOT edit
   prompt: string;
   isProcessing: boolean;
   previewUrl: string | null;

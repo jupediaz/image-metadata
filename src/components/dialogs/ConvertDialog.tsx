@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useImageStore } from '@/hooks/useImageStore';
+import { useProgress } from '@/hooks/useProgress';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +17,7 @@ export function ConvertDialog({ open, onClose }: Props) {
   const selectedIds = useImageStore((s) => s.selectedIds);
   const updateImage = useImageStore((s) => s.updateImage);
   const sessionId = useImageStore((s) => s.sessionId);
+  const { startProgress, updateProgress, finishProgress, failProgress } = useProgress();
   const { toast } = useToast();
 
   const [targetFormat, setTargetFormat] = useState<'jpeg' | 'png' | 'webp'>('jpeg');
@@ -25,7 +27,15 @@ export function ConvertDialog({ open, onClose }: Props) {
 
   const handleConvert = async () => {
     setSaving(true);
+    const progressId = startProgress(
+      'convert',
+      `Convirtiendo ${selectedIds.size} imagen${selectedIds.size > 1 ? 'es' : ''} a ${targetFormat.toUpperCase()}`,
+      selectedIds.size
+    );
+
     try {
+      updateProgress(progressId, 10, 'Preparando conversión...');
+
       const res = await fetch('/api/convert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,7 +50,12 @@ export function ConvertDialog({ open, onClose }: Props) {
 
       if (!res.ok) throw new Error('Error convirtiendo');
 
+      updateProgress(progressId, 50, 'Procesando imágenes...');
+
       const data = await res.json();
+
+      updateProgress(progressId, 90, 'Actualizando metadatos...');
+
       for (const img of data.converted) {
         updateImage(img.id, {
           format: img.format,
@@ -50,9 +65,11 @@ export function ConvertDialog({ open, onClose }: Props) {
         });
       }
 
+      finishProgress(progressId);
       toast('success', `${data.converted.length} imagen${data.converted.length > 1 ? 'es' : ''} convertida${data.converted.length > 1 ? 's' : ''}`);
       onClose();
     } catch (err) {
+      failProgress(progressId, err instanceof Error ? err.message : 'Error al convertir');
       toast('error', 'Error al convertir');
       console.error(err);
     } finally {

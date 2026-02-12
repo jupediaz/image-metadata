@@ -54,9 +54,10 @@ export interface GeminiEditApiRequest {
   sessionId: string;
   imageId: string;
   prompt: string;
-  maskDataUrl?: string;       // data:image/png;base64,...
+  inpaintMaskDataUrl?: string;    // Green zone: areas where AI CAN edit (white = edit, black = keep)
+  protectMaskDataUrl?: string;    // Red zone: areas where AI CANNOT edit (white = protect, black = can edit)
   preserveExif: boolean;
-  model?: string;             // Gemini model to use (e.g., 'gemini-3-flash-preview')
+  model?: string;                 // Gemini model to use (e.g., 'gemini-3-pro-image-preview')
 }
 
 export interface GeminiEditApiResponse {
@@ -66,6 +67,7 @@ export interface GeminiEditApiResponse {
   thumbnailUrl?: string;
   processingTimeMs: number;
   error?: string;
+  exifDump?: string;            // Base64 EXIF dump from original (if preserveExif was true)
 }
 
 export interface ExifRestoreRequest {

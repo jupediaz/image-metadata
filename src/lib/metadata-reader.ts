@@ -50,8 +50,11 @@ async function readHeicMetadata(buffer: Buffer): Promise<ImageMetadata> {
     // Write buffer to temp file
     await writeFile(tempFile, buffer);
 
-    // Use ExifTool to extract metadata as JSON
-    const { stdout } = await execAsync(`exiftool -json -a -G1 "${tempFile}"`);
+    // Use ExifTool to extract metadata as JSON with timeout
+    const { stdout } = await execAsync(`exiftool -json -a -G1 "${tempFile}"`, {
+      timeout: 10000, // 10 second timeout
+      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+    });
     const data = JSON.parse(stdout);
     const flat = data[0] || {};
 

@@ -68,7 +68,8 @@ function AITab({ imageId }: { imageId: string }) {
   } = useImageStore();
 
   const [preserveExif, setPreserveExif] = useState(true);
-  const [selectedModels, setSelectedModels] = useState<string[]>(['gemini-2.5-flash-image']);
+  const [selectedModels, setSelectedModels] = useState<string[]>(['gemini-3-pro-image-preview']);
+  const [isSaving, setIsSaving] = useState(false);
 
   const modelOptions = [
     {
@@ -117,7 +118,8 @@ function AITab({ imageId }: { imageId: string }) {
               sessionId,
               imageId: currentImage.id,
               prompt: editorState.prompt,
-              maskDataUrl: editorState.maskDataUrl || undefined,
+              inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
+              protectMaskDataUrl: editorState.protectMaskDataUrl || undefined,
               preserveExif,
               model,
             };
@@ -137,7 +139,8 @@ function AITab({ imageId }: { imageId: string }) {
               id: data.newVersionId,
               timestamp: new Date(),
               prompt: editorState.prompt,
-              maskDataUrl: editorState.maskDataUrl || undefined,
+              inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
+              protectMaskDataUrl: editorState.protectMaskDataUrl || undefined,
               imageUrl: data.editedImageUrl,
               thumbnailUrl: data.thumbnailUrl,
               model,
@@ -176,7 +179,8 @@ function AITab({ imageId }: { imageId: string }) {
         sessionId,
         imageId: currentImage.id,
         prompt: editorState.prompt,
-        maskDataUrl: editorState.maskDataUrl || undefined,
+        inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
+        protectMaskDataUrl: editorState.protectMaskDataUrl || undefined,
         preserveExif,
         model,
       };
@@ -202,7 +206,8 @@ function AITab({ imageId }: { imageId: string }) {
         id: data.newVersionId,
         timestamp: new Date(),
         prompt: editorState.prompt,
-        maskDataUrl: editorState.maskDataUrl || undefined,
+        inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
+        protectMaskDataUrl: editorState.protectMaskDataUrl || undefined,
         imageUrl: data.editedImageUrl,
         thumbnailUrl: data.thumbnailUrl,
         model,
@@ -216,6 +221,80 @@ function AITab({ imageId }: { imageId: string }) {
       );
     } finally {
       setEditorProcessing(false);
+    }
+  };
+
+  // Get the current active version (if any edited version is selected)
+  const currentVersionIndex = currentImage.currentVersionIndex ?? -1;
+  const currentVersion = currentVersionIndex >= 0
+    ? currentImage.editHistory?.[currentVersionIndex]
+    : null;
+
+  const handleSaveWithMetadata = async () => {
+    if (!currentVersion || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const targetFormat = (currentImage.format === 'heic' || currentImage.format === 'heif')
+        ? 'heic' : 'jpg';
+
+      const res = await fetch('/api/export-version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          versionId: currentVersion.id,
+          originalImageId: currentImage.id,
+          originalFilename: currentImage.originalFilename,
+          originalFormat: currentImage.format,
+          originalWidth: currentImage.width,
+          originalHeight: currentImage.height,
+          originalFileSize: currentImage.originalFileSize,
+          originalQuality: currentImage.originalQuality,
+          targetFormat,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Export failed');
+      }
+
+      const blob = await res.blob();
+      const ext = targetFormat === 'heic' ? '.heic' : '.jpg';
+      const baseName = currentImage.originalFilename.replace(/\.[^/.]+$/, '');
+      const suggestedName = `${baseName}_updated${ext}`;
+
+      // Try File System Access API (lets user pick save location)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as unknown as { showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
+            suggestedName,
+            types: [{
+              description: targetFormat === 'heic' ? 'HEIC Image' : 'JPEG Image',
+              accept: { [targetFormat === 'heic' ? 'image/heic' : 'image/jpeg']: [ext] },
+            }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        } catch {
+          // User cancelled or unsupported — fall through to download
+        }
+      }
+
+      // Fallback: regular download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setEditorError(error instanceof Error ? error.message : 'Save failed');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -278,6 +357,27 @@ function AITab({ imageId }: { imageId: string }) {
         </div>
       </label>
 
+      {/* Save button — only when there's an active edited version */}
+      {currentVersion && (
+        <button
+          onClick={handleSaveWithMetadata}
+          disabled={isSaving || editorState.isProcessing}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-60 text-white text-xs font-medium rounded border border-green-500 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          {isSaving ? 'Saving...' : 'Save with all metadata'}
+          {!isSaving && (
+            <span className="text-[10px] text-green-200 ml-1">
+              ({currentImage.originalFilename.replace(/\.[^/.]+$/, '')}_updated)
+            </span>
+          )}
+        </button>
+      )}
+
       {/* Error */}
       {editorState.error && (
         <div className="p-2 bg-red-900/30 border border-red-700/50 rounded text-xs text-red-300">
@@ -305,6 +405,7 @@ function HistoryTab({ imageId }: { imageId: string }) {
   const images = useImageStore((s) => s.images);
   const sessionId = useImageStore((s) => s.sessionId);
   const revertToVersion = useImageStore((s) => s.revertToVersion);
+  const deleteEditVersion = useImageStore((s) => s.deleteEditVersion);
   const image = images.find((img) => img.id === imageId);
 
   if (!image) return null;
@@ -323,7 +424,10 @@ function HistoryTab({ imageId }: { imageId: string }) {
         versions={image.editHistory}
         currentVersionIndex={image.currentVersionIndex}
         onRevert={(index) => revertToVersion(image.id, index)}
+        onDelete={(index) => deleteEditVersion(image.id, index)}
         sessionId={sessionId}
+        imageId={image.id}
+        originalImage={image}
       />
     </div>
   );

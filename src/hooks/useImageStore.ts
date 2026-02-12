@@ -32,13 +32,15 @@ interface ImageStore {
   // AI Editor actions
   startAiEdit: (imageId: string) => void;
   cancelAiEdit: () => void;
-  setEditorMask: (maskDataUrl: string | null) => void;
+  setEditorInpaintMask: (maskDataUrl: string | null) => void;
+  setEditorProtectMask: (maskDataUrl: string | null) => void;
   setEditorPrompt: (prompt: string) => void;
   setEditorProcessing: (isProcessing: boolean) => void;
   setEditorPreview: (previewUrl: string | null) => void;
   setEditorError: (error: string | null) => void;
   saveEditVersion: (imageId: string, version: EditVersion) => void;
   revertToVersion: (imageId: string, versionIndex: number) => void;
+  deleteEditVersion: (imageId: string, versionIndex: number) => void;
 
   reset: () => void;
 }
@@ -119,8 +121,9 @@ export const useImageStore = create<ImageStore>()(
       set({
         editorState: {
           imageId,
-          maskDataUrl: null,
-          prompt: '',
+          inpaintMaskDataUrl: null,
+          protectMaskDataUrl: null,
+          prompt: 'arregla los pequeños daños que se ven, dejando sombras y reflejos homogeneos, tipicos de un brillo y reflejo homogeneo de unas puertas alineadas',
           isProcessing: false,
           previewUrl: null,
           error: null,
@@ -133,10 +136,17 @@ export const useImageStore = create<ImageStore>()(
         editorState: null,
       }),
 
-    setEditorMask: (maskDataUrl) =>
+    setEditorInpaintMask: (maskDataUrl) =>
       set((state) =>
         state.editorState
-          ? { editorState: { ...state.editorState, maskDataUrl } }
+          ? { editorState: { ...state.editorState, inpaintMaskDataUrl: maskDataUrl } }
+          : {}
+      ),
+
+    setEditorProtectMask: (maskDataUrl) =>
+      set((state) =>
+        state.editorState
+          ? { editorState: { ...state.editorState, protectMaskDataUrl: maskDataUrl } }
           : {}
       ),
 
@@ -189,6 +199,25 @@ export const useImageStore = create<ImageStore>()(
             ? { ...img, currentVersionIndex: versionIndex }
             : img
         ),
+      })),
+
+    deleteEditVersion: (imageId, versionIndex) =>
+      set((state) => ({
+        images: state.images.map((img) => {
+          if (img.id !== imageId || !img.editHistory) return img;
+          const newHistory = img.editHistory.filter((_, i) => i !== versionIndex);
+          let newIndex = img.currentVersionIndex ?? -1;
+          // Adjust currentVersionIndex
+          if (newHistory.length === 0) {
+            newIndex = -1;
+          } else if (newIndex === versionIndex) {
+            // Deleted the active version -> go to previous or original
+            newIndex = versionIndex > 0 ? versionIndex - 1 : -1;
+          } else if (newIndex > versionIndex) {
+            newIndex--;
+          }
+          return { ...img, editHistory: newHistory, currentVersionIndex: newIndex };
+        }),
       })),
 
     reset: () =>

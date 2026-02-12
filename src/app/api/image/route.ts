@@ -16,7 +16,7 @@ async function convertHeicToJpeg(heicPath: string): Promise<Buffer> {
 
   try {
     // Use ImageMagick to convert HEIC to JPEG
-    await execAsync(`convert "${heicPath}" -quality 90 "${tempJpegPath}"`);
+    await execAsync(`magick "${heicPath}" -quality 90 "${tempJpegPath}"`);
 
     // Read the converted JPEG
     const jpegBuffer = await readFile(tempJpegPath);

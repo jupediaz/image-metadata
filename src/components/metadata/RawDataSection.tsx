@@ -20,14 +20,18 @@ export function RawDataSection({ data }: Props) {
           </h4>
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-xs font-mono overflow-x-auto max-h-60 overflow-y-auto">
             {typeof sectionData === 'object' && sectionData !== null ? (
-              <table className="w-full">
+              <table className="w-full table-fixed">
+                <colgroup>
+                  <col className="w-40" />
+                  <col />
+                </colgroup>
                 <tbody>
                   {Object.entries(sectionData as Record<string, unknown>).map(([key, value]) => (
                     <tr key={key} className="border-b border-gray-200/50 dark:border-gray-700/50 last:border-0">
-                      <td className="py-1 pr-3 text-gray-500 dark:text-gray-400 whitespace-nowrap align-top">
+                      <td className="py-1 pr-3 text-gray-500 dark:text-gray-400 align-top truncate" title={key}>
                         {key}
                       </td>
-                      <td className="py-1 text-gray-900 dark:text-gray-100 break-all">
+                      <td className="py-1 text-gray-900 dark:text-gray-100 break-words">
                         {formatValue(value)}
                       </td>
                     </tr>

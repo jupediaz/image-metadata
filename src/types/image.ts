@@ -12,17 +12,24 @@ export interface ImageFile {
   status: ProcessingStatus;
   editHistory?: EditVersion[];
   currentVersionIndex?: number;
+  // Original image parameters for quality preservation
+  originalFileSize?: number;      // Exact byte size of original file
+  originalQuality?: number;        // Detected compression quality (0-100)
+  originalColorSpace?: string;     // Color profile/space
+  originalBitDepth?: number;       // Bit depth per channel
 }
 
 export interface EditVersion {
   id: string;
   timestamp: Date;
   prompt: string;
-  maskDataUrl?: string;      // The mask used for this edit
-  imageUrl: string;           // URL to the edited version
-  thumbnailUrl?: string;      // Thumbnail of the edited version
-  originalExifDump?: string;  // Base64 EXIF dump from original
-  model?: string;             // Gemini model used for this edit
+  inpaintMaskDataUrl?: string;  // Green zone mask: where AI can edit
+  protectMaskDataUrl?: string;  // Red zone mask: where AI cannot edit
+  imageUrl: string;             // URL to the edited version
+  thumbnailUrl?: string;        // Thumbnail of the edited version
+  originalExifDump?: string;    // Base64 EXIF dump from original
+  model?: string;               // Gemini model used for this edit
+  processingTimeMs?: number;    // Time taken to generate this edit (in milliseconds)
 }
 
 export type ProcessingStatus =

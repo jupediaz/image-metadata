@@ -1,9 +1,13 @@
 'use client';
 
 import { usePersistence } from '@/hooks/usePersistence';
+import { useAutoPersist } from '@/hooks/useAutoPersist';
 
 export function PersistenceProvider({ children }: { children: React.ReactNode }) {
   const hydrated = usePersistence();
+
+  // Auto-persist changes to IndexedDB
+  useAutoPersist();
 
   if (!hydrated) {
     return (
