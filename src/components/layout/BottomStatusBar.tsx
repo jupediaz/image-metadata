@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface BottomStatusBarProps {
   zoom: number;
@@ -25,6 +25,11 @@ export default function BottomStatusBar({
 }: BottomStatusBarProps) {
   const zoomPercent = Math.round(zoom * 100);
   const [inputValue, setInputValue] = useState(zoomPercent.toString());
+
+  // Sync inputValue when zoom changes externally (mouse wheel, fit buttons, etc.)
+  useEffect(() => {
+    setInputValue(zoomPercent.toString());
+  }, [zoomPercent]);
 
   const handleZoomInput = (value: string) => {
     setInputValue(value);

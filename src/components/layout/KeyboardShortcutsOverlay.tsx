@@ -6,7 +6,8 @@ const shortcuts = [
   { category: 'Tools', items: [
     { key: 'V', desc: 'Select / Move' },
     { key: 'H', desc: 'Pan (hand)' },
-    { key: 'B', desc: 'Brush tool' },
+    { key: 'B', desc: 'Brush (inpaint zone)' },
+    { key: 'P', desc: 'Protect zone' },
     { key: 'E', desc: 'Eraser tool' },
     { key: 'L', desc: 'Lasso tool' },
     { key: 'Z', desc: 'Zoom tool' },
@@ -20,6 +21,9 @@ const shortcuts = [
   { category: 'Navigation', items: [
     { key: 'Space+Drag', desc: 'Temporary pan' },
     { key: 'Scroll', desc: 'Zoom in/out' },
+    { key: 'Ctrl++', desc: 'Zoom in' },
+    { key: 'Ctrl+-', desc: 'Zoom out' },
+    { key: 'Ctrl+0', desc: 'Fit to screen' },
     { key: 'Esc', desc: 'Back to detail' },
     { key: '?', desc: 'Toggle this overlay' },
   ]},

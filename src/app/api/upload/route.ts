@@ -67,10 +67,22 @@ export async function POST(request: NextRequest) {
         console.log(`  ✓ Thumbnail saved`);
       }
 
-      // TEMPORARY: Skip metadata reading to unblock uploads
-      console.log(`  📋 Skipping metadata (temporary)...`);
-      const metadata = { exif: null, gps: null, dates: null, iptc: null, xmp: null, icc: null, raw: {} };
-      console.log(`  ✓ Using empty metadata`);
+      // Extract metadata (EXIF, GPS, IPTC, etc.)
+      console.log(`  📋 Reading metadata...`);
+      let metadata;
+      try {
+        metadata = await readAllMetadata(buffer, format);
+        console.log(`  ✓ Metadata extracted:`, {
+          hasExif: !!metadata.exif,
+          hasGps: !!metadata.gps,
+          hasDates: !!metadata.dates,
+          hasIptc: !!metadata.iptc,
+          rawKeys: Object.keys(metadata.raw || {}),
+        });
+      } catch (metaError) {
+        console.warn(`  ⚠️ Metadata extraction failed, using empty:`, metaError);
+        metadata = { exif: null, gps: null, dates: null, iptc: null, xmp: null, icc: null, raw: {} };
+      }
 
       const imageFile: ImageFile = {
         id: fileId,

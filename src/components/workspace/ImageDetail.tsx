@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import { MetadataPanel } from '@/components/metadata/MetadataPanel';
@@ -24,11 +24,35 @@ export function ImageDetailView({ imageId }: ImageDetailViewProps) {
   const revertToVersion = useImageStore((s) => s.revertToVersion);
   const deleteEditVersion = useImageStore((s) => s.deleteEditVersion);
   const removeImage = useImageStore((s) => s.removeImage);
+  const updateMetadata = useImageStore((s) => s.updateMetadata);
   const setActiveImage = useImageStore((s) => s.setActiveImage);
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<'metadata' | 'history'>('metadata');
 
   const image = images.find((img) => img.id === imageId);
+
+  // Auto-refresh metadata if it's empty (e.g. uploaded before extraction was enabled)
+  useEffect(() => {
+    if (!image || !sessionId) return;
+    const meta = image.metadata;
+    const isEmpty = !meta || (!meta.exif && !meta.gps && !meta.dates && !meta.iptc && Object.keys(meta.raw || {}).length === 0);
+    if (!isEmpty) return;
+
+    let cancelled = false;
+    fetch(`/api/metadata?sessionId=${sessionId}&id=${image.id}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (cancelled || !data?.metadata) return;
+        const m = data.metadata;
+        const stillEmpty = !m.exif && !m.gps && !m.dates && !m.iptc && Object.keys(m.raw || {}).length === 0;
+        if (!stillEmpty) {
+          updateMetadata(image.id, m);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [image?.id, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!image) return null;
 
   const handleBack = () => {

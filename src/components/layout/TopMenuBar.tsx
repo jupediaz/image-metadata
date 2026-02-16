@@ -13,9 +13,13 @@ interface TopMenuBarProps {
   canUndo: boolean;
   canRedo: boolean;
   onExport?: () => void;
+  onClearMasks?: () => void;
+  onClearInpaint?: () => void;
+  onClearProtect?: () => void;
   activeTool: EditorTool;
   onToolChange: (tool: EditorTool) => void;
   brushSize: number;
+  onBrushSizeChange: (size: number) => void;
 }
 
 interface MenuItem {
@@ -35,9 +39,13 @@ export default function TopMenuBar({
   canUndo,
   canRedo,
   onExport,
+  onClearMasks,
+  onClearInpaint,
+  onClearProtect,
   activeTool,
   onToolChange,
   brushSize,
+  onBrushSizeChange,
 }: TopMenuBarProps) {
   const router = useRouter();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -53,7 +61,9 @@ export default function TopMenuBar({
       { label: 'Undo', shortcut: 'Ctrl+Z', action: onUndo, disabled: !canUndo },
       { label: 'Redo', shortcut: 'Ctrl+Shift+Z', action: onRedo, disabled: !canRedo },
       { label: '', separator: true },
-      { label: 'Clear Mask', action: () => {} },
+      { label: 'Clear All Masks', shortcut: 'Ctrl+Shift+C', action: onClearMasks },
+      { label: 'Clear Green Mask (Inpaint)', action: onClearInpaint },
+      { label: 'Clear Red Mask (Protect)', action: onClearProtect },
     ],
     View: [
       { label: 'Zoom In', shortcut: 'Ctrl++', disabled: true },
@@ -174,6 +184,36 @@ export default function TopMenuBar({
             </span>
           )}
         </button>
+
+        {/* Brush size control - visible when brush or protect is active */}
+        {(activeTool === 'brush' || activeTool === 'protect' || activeTool === 'eraser') && (
+          <>
+            <div className="w-px h-6 bg-[#3c3c3c]" />
+            <div className="flex items-center gap-2">
+              <div
+                className="rounded-full border border-white/40"
+                style={{
+                  width: Math.max(6, Math.min(28, brushSize * 0.5)),
+                  height: Math.max(6, Math.min(28, brushSize * 0.5)),
+                  backgroundColor:
+                    activeTool === 'brush' ? 'rgba(0,255,0,0.5)'
+                    : activeTool === 'protect' ? 'rgba(255,0,0,0.5)'
+                    : 'rgba(255,255,255,0.3)',
+                }}
+              />
+              <input
+                type="range"
+                min="2"
+                max="100"
+                value={brushSize}
+                onChange={(e) => onBrushSizeChange(Number(e.target.value))}
+                className="w-28 h-1.5 accent-white cursor-pointer"
+                title={`Tamaño del pincel: ${brushSize}px`}
+              />
+              <span className="text-[11px] text-[#cccccc] font-mono w-8 text-right">{brushSize}px</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Filename - Right side */}

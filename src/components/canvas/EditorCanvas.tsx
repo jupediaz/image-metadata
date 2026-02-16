@@ -2,7 +2,7 @@
 'use client';
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Canvas, FabricImage, PencilBrush, Point, Rect } from 'fabric';
+import { Canvas, FabricImage, PencilBrush, Point, Rect, Group, LayoutManager, FixedLayout } from 'fabric';
 import { useImageStore } from '@/hooks/useImageStore';
 import { type EditorTool } from '../layout/EditorShell';
 
@@ -20,6 +20,9 @@ export interface EditorCanvasHandle {
   fitWidth: () => void;
   fitHeight: () => void;
   exportImage: () => void;
+  clearMasks: () => void;
+  clearInpaintMask: () => void;
+  clearProtectMask: () => void;
 }
 
 const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function EditorCanvas(
@@ -32,6 +35,10 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   const imageBoundsRef = useRef({ left: 0, top: 0, width: 0, height: 0 });
   const imageClipRef = useRef<Rect | null>(null);
   const activeToolRef = useRef<EditorTool>(activeTool);
+  const zoomFromCanvasRef = useRef(false);
+  const inpaintGroupRef = useRef<Group | null>(null);
+  const protectGroupRef = useRef<Group | null>(null);
+  const eraseGroupRef = useRef<Group | null>(null); // New: group for eraser strokes
   const [canvasReady, setCanvasReady] = useState(false);
 
   const setEditorInpaintMask = useImageStore((s) => s.setEditorInpaintMask);
@@ -42,96 +49,81 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     activeToolRef.current = activeTool;
   }, [activeTool]);
 
-  // Export dual masks from canvas paths
+  // Helper: render paths to a B/W mask canvas with erase support
+  const renderPathsToMask = useCallback((paths: any[], erasePaths: any[], width: number, height: number): string | null => {
+    if (paths.length === 0 && erasePaths.length === 0) return null;
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    const ctx = maskCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Start with black background
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw positive paths in white
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    paths.forEach((path: any) => {
+      ctx.lineWidth = path.strokeWidth || brushSize;
+      ctx.save();
+      ctx.beginPath();
+      const pathData = path.path;
+      if (pathData) {
+        pathData.forEach((segment: any) => {
+          const cmd = segment[0];
+          if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
+          else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
+          else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+
+    // Draw erase paths in black (subtracting from the mask)
+    ctx.strokeStyle = '#000000';
+    erasePaths.forEach((path: any) => {
+      ctx.lineWidth = path.strokeWidth || brushSize;
+      ctx.save();
+      ctx.beginPath();
+      const pathData = path.path;
+      if (pathData) {
+        pathData.forEach((segment: any) => {
+          const cmd = segment[0];
+          if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
+          else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
+          else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+
+    return maskCanvas.toDataURL('image/png');
+  }, [brushSize]);
+
+  // Export dual masks from group paths with erase support
   const exportMasks = useCallback(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
-    const objects = canvas.getObjects();
-    if (objects.length === 0) {
-      setEditorInpaintMask(null);
-      setEditorProtectMask(null);
-      return;
-    }
+    const w = canvas.width || 800;
+    const h = canvas.height || 600;
 
-    // Separate paths by type (inpaint vs protect)
-    const inpaintPaths = objects.filter((obj: any) => obj.type === 'path' && obj.maskType === 'inpaint');
-    const protectPaths = objects.filter((obj: any) => obj.type === 'path' && obj.maskType === 'protect');
+    // Get paths from groups
+    const inpaintPaths = inpaintGroupRef.current?.getObjects() || [];
+    const protectPaths = protectGroupRef.current?.getObjects() || [];
+    const erasePaths = eraseGroupRef.current?.getObjects() || [];
 
-    // Create inpaint mask (green zones)
-    if (inpaintPaths.length > 0) {
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = canvas.width || 800;
-      maskCanvas.height = canvas.height || 600;
-      const ctx = maskCanvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        inpaintPaths.forEach((obj) => {
-          const path = obj as any;
-          ctx.lineWidth = path.strokeWidth || brushSize;
-          ctx.save();
-          ctx.beginPath();
-          const pathData = path.path;
-          if (pathData) {
-            pathData.forEach((segment: any) => {
-              const cmd = segment[0];
-              if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
-              else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
-              else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
-            });
-            ctx.stroke();
-          }
-          ctx.restore();
-        });
-
-        setEditorInpaintMask(maskCanvas.toDataURL('image/png'));
-      }
-    } else {
-      setEditorInpaintMask(null);
-    }
-
-    // Create protect mask (red zones)
-    if (protectPaths.length > 0) {
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = canvas.width || 800;
-      maskCanvas.height = canvas.height || 600;
-      const ctx = maskCanvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        protectPaths.forEach((obj) => {
-          const path = obj as any;
-          ctx.lineWidth = path.strokeWidth || brushSize;
-          ctx.save();
-          ctx.beginPath();
-          const pathData = path.path;
-          if (pathData) {
-            pathData.forEach((segment: any) => {
-              const cmd = segment[0];
-              if (cmd === 'M') ctx.moveTo(segment[1], segment[2]);
-              else if (cmd === 'Q') ctx.quadraticCurveTo(segment[1], segment[2], segment[3], segment[4]);
-              else if (cmd === 'L') ctx.lineTo(segment[1], segment[2]);
-            });
-            ctx.stroke();
-          }
-          ctx.restore();
-        });
-
-        setEditorProtectMask(maskCanvas.toDataURL('image/png'));
-      }
-    } else {
-      setEditorProtectMask(null);
-    }
-  }, [brushSize, setEditorInpaintMask, setEditorProtectMask]);
+    // Apply erase paths to both masks (they subtract from both)
+    setEditorInpaintMask(renderPathsToMask(inpaintPaths, erasePaths, w, h));
+    setEditorProtectMask(renderPathsToMask(protectPaths, erasePaths, w, h));
+  }, [renderPathsToMask, setEditorInpaintMask, setEditorProtectMask]);
 
   // Fit helpers
   const fitAll = useCallback(() => {
@@ -194,12 +186,54 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     link.click();
   }, [imageUrl]);
 
+  const clearMasks = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    // Clear all groups including erase
+    inpaintGroupRef.current?.removeAll();
+    protectGroupRef.current?.removeAll();
+    eraseGroupRef.current?.removeAll();
+
+    canvas.renderAll();
+    exportMasks();
+  }, [exportMasks]);
+
+  const clearInpaintMask = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    inpaintGroupRef.current?.removeAll();
+    canvas.renderAll();
+    exportMasks();
+  }, [exportMasks]);
+
+  const clearProtectMask = useCallback(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    protectGroupRef.current?.removeAll();
+    canvas.renderAll();
+    exportMasks();
+  }, [exportMasks]);
+
   // Expose imperative methods
-  useImperativeHandle(ref, () => ({ fitAll, fitWidth, fitHeight, exportImage }), [
+  useImperativeHandle(ref, () => ({
     fitAll,
     fitWidth,
     fitHeight,
     exportImage,
+    clearMasks,
+    clearInpaintMask,
+    clearProtectMask,
+  }), [
+    fitAll,
+    fitWidth,
+    fitHeight,
+    exportImage,
+    clearMasks,
+    clearInpaintMask,
+    clearProtectMask,
   ]);
 
   // Initialize canvas
@@ -255,13 +289,69 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       });
 
       canvas.backgroundImage = img;
+
+      // Create mask groups with uniform opacity
+      // Using FixedLayout prevents the group from recalculating bounds when paths are added
+      const inpaintGroup = new Group([], {
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        opacity: 0.5,
+        selectable: false,
+        evented: false,
+        interactive: false,
+        subTargetCheck: false,
+        clipPath: imageClipRef.current,
+        layoutManager: new LayoutManager(new FixedLayout()),
+      });
+      (inpaintGroup as any).maskType = 'inpaint';
+
+      const protectGroup = new Group([], {
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        opacity: 0.5,
+        selectable: false,
+        evented: false,
+        interactive: false,
+        subTargetCheck: false,
+        clipPath: imageClipRef.current,
+        layoutManager: new LayoutManager(new FixedLayout()),
+      });
+      (protectGroup as any).maskType = 'protect';
+
+      // Create erase group - paths here act as "negative" areas
+      const eraseGroup = new Group([], {
+        left: 0,
+        top: 0,
+        width: w,
+        height: h,
+        opacity: 0.7,
+        selectable: false,
+        evented: false,
+        interactive: false,
+        subTargetCheck: false,
+        clipPath: imageClipRef.current,
+        layoutManager: new LayoutManager(new FixedLayout()),
+      });
+      (eraseGroup as any).maskType = 'erase';
+
+      canvas.add(inpaintGroup);
+      canvas.add(protectGroup);
+      canvas.add(eraseGroup);
+      inpaintGroupRef.current = inpaintGroup;
+      protectGroupRef.current = protectGroup;
+      eraseGroupRef.current = eraseGroup;
+
       canvas.renderAll();
 
-      // Start in drawing mode with green brush (inpaint)
+      // Start in drawing mode with green brush (inpaint) - fully opaque, group handles transparency
       canvas.isDrawingMode = true;
       const brush = new PencilBrush(canvas);
       brush.width = brushSize;
-      brush.color = 'rgba(0, 255, 0, 0.7)'; // Green for inpaint zones
+      brush.color = 'rgb(0, 255, 0)';
       brush.strokeLineCap = 'round';
       brush.strokeLineJoin = 'round';
       canvas.freeDrawingBrush = brush;
@@ -281,25 +371,37 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     const ro = new ResizeObserver(handleResize);
     ro.observe(container);
 
-    // Path created -> tag with mask type, clip to image area, export masks
+    // Path created -> move into the appropriate group for uniform opacity
     canvas.on('path:created', (e: any) => {
       const path = e.path;
-      if (path) {
-        // Tag path with mask type based on active tool
-        const tool = activeToolRef.current;
-        if (tool === 'brush') {
-          path.maskType = 'inpaint';
-        } else if (tool === 'protect') {
-          path.maskType = 'protect';
-        }
+      if (!path) return;
 
-        // Clip to image area
-        if (imageClipRef.current) {
-          path.clipPath = imageClipRef.current;
-        }
+      const tool = activeToolRef.current;
+      const targetGroup = tool === 'brush' ? inpaintGroupRef.current
+        : tool === 'protect' ? protectGroupRef.current
+        : tool === 'eraser' ? eraseGroupRef.current
+        : null;
+
+      if (targetGroup) {
+        // Tag path
+        path.maskType = tool === 'brush' ? 'inpaint'
+          : tool === 'protect' ? 'protect'
+          : 'erase';
+        path.set({ opacity: 1, selectable: false, evented: false });
+
+        // Remove from canvas (PencilBrush auto-adds it) and add to group
+        canvas.remove(path);
+        targetGroup.add(path);
+
+        // Force group to recognize the new path and update
+        path.setCoords();
+        path.dirty = true;
+        targetGroup.dirty = true;
+        targetGroup.setCoords();
+
         canvas.renderAll();
+        exportMasks();
       }
-      exportMasks();
     });
 
     return () => {
@@ -325,8 +427,13 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       canvas.defaultCursor = 'default';
       canvas.hoverCursor = 'move';
 
-      canvas.getObjects().forEach((obj) => {
-        obj.set({ selectable: true, evented: true, hasControls: true, hasBorders: true });
+      // Make groups interactive so individual paths can be selected
+      [inpaintGroupRef.current, protectGroupRef.current, eraseGroupRef.current].forEach((group) => {
+        if (!group) return;
+        group.set({ interactive: true, subTargetCheck: true });
+        group.getObjects().forEach((obj) => {
+          obj.set({ selectable: true, evented: true, hasControls: true, hasBorders: true });
+        });
       });
       canvas.renderAll();
 
@@ -337,8 +444,10 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       canvas.defaultCursor = 'crosshair';
       canvas.discardActiveObject();
 
-      canvas.getObjects().forEach((obj) => {
-        obj.set({ selectable: false, evented: false });
+      // Make groups non-interactive during drawing
+      [inpaintGroupRef.current, protectGroupRef.current, eraseGroupRef.current].forEach((group) => {
+        if (!group) return;
+        group.set({ interactive: false, subTargetCheck: false, selectable: false, evented: false });
       });
       canvas.renderAll();
 
@@ -346,13 +455,13 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
         const brush = canvas.freeDrawingBrush as PencilBrush;
         brush.width = brushSize;
 
-        // Set color based on tool: green for inpaint, red for protect, black for eraser
+        // Fully opaque colors - the Group handles uniform transparency
         if (activeTool === 'brush') {
-          brush.color = 'rgba(0, 255, 0, 0.7)'; // Green - zones where AI CAN edit
+          brush.color = 'rgb(0, 255, 0)';
         } else if (activeTool === 'protect') {
-          brush.color = 'rgba(255, 0, 0, 0.7)'; // Red - zones where AI CANNOT edit
+          brush.color = 'rgb(255, 0, 0)';
         } else {
-          brush.color = 'rgba(0, 0, 0, 0.7)'; // Black - eraser
+          brush.color = 'rgb(0, 0, 0)';
         }
       }
     } else if (activeTool === 'pan') {
@@ -423,7 +532,15 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       if (active.length === 0) return;
 
       e.preventDefault();
-      active.forEach((obj) => canvas.remove(obj));
+      active.forEach((obj) => {
+        // Remove from parent group if it's inside one
+        const parent = (obj as any).group;
+        if (parent && (parent === inpaintGroupRef.current || parent === protectGroupRef.current || parent === eraseGroupRef.current)) {
+          parent.remove(obj);
+        } else {
+          canvas.remove(obj);
+        }
+      });
       canvas.discardActiveObject();
       canvas.renderAll();
       exportMasks();
@@ -440,6 +557,27 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     canvas.freeDrawingBrush.width = brushSize;
   }, [brushSize]);
 
+  // Apply zoom from external sources (slider, buttons, keyboard)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !canvasReady) return;
+
+    // Skip if zoom was set by canvas wheel handler (already applied)
+    if (zoomFromCanvasRef.current) {
+      zoomFromCanvasRef.current = false;
+      return;
+    }
+
+    // Zoom to center of the viewport
+    const container = containerRef.current;
+    if (!container) return;
+    const centerX = container.clientWidth / 2;
+    const centerY = container.clientHeight / 2;
+
+    canvas.zoomToPoint(new Point(centerX, centerY), zoom);
+    canvas.renderAll();
+  }, [zoom, canvasReady]);
+
   // Handle wheel zoom
   useEffect(() => {
     const container = containerRef.current;
@@ -450,8 +588,12 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       const canvas = fabricCanvasRef.current;
       if (!canvas) return;
 
+      const currentZoom = canvas.getZoom();
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(0.1, Math.min(5, zoom + delta));
+      const newZoom = Math.max(0.1, Math.min(5, currentZoom + delta));
+
+      // Mark as canvas-originated so the zoom useEffect doesn't double-apply
+      zoomFromCanvasRef.current = true;
       onZoomChange(newZoom);
 
       const point = canvas.getPointer(e as any);
@@ -461,7 +603,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [zoom, onZoomChange]);
+  }, [onZoomChange]);
 
   // Track cursor position
   useEffect(() => {

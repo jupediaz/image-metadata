@@ -263,7 +263,10 @@ function AITab({ imageId }: { imageId: string }) {
       const blob = await res.blob();
       const ext = targetFormat === 'heic' ? '.heic' : '.jpg';
       const baseName = currentImage.originalFilename.replace(/\.[^/.]+$/, '');
-      const suggestedName = `${baseName}_updated${ext}`;
+
+      // Get version number from current version index (1-based)
+      const versionNumber = (currentImage.currentVersionIndex ?? 0) + 1;
+      const suggestedName = `${baseName}_v${versionNumber}${ext}`;
 
       // Try File System Access API (lets user pick save location)
       if ('showSaveFilePicker' in window) {
@@ -359,23 +362,53 @@ function AITab({ imageId }: { imageId: string }) {
 
       {/* Save button — only when there's an active edited version */}
       {currentVersion && (
-        <button
-          onClick={handleSaveWithMetadata}
-          disabled={isSaving || editorState.isProcessing}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-60 text-white text-xs font-medium rounded border border-green-500 transition-colors"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          {isSaving ? 'Saving...' : 'Save with all metadata'}
-          {!isSaving && (
-            <span className="text-[10px] text-green-200 ml-1">
-              ({currentImage.originalFilename.replace(/\.[^/.]+$/, '')}_updated)
-            </span>
-          )}
-        </button>
+        <div className="p-3 bg-gradient-to-r from-green-900/30 to-blue-900/30 border-2 border-green-600/50 rounded-lg">
+          <div className="text-xs text-green-300 mb-2 font-medium flex items-center gap-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+            </svg>
+            Preservación Total de Calidad
+          </div>
+          <button
+            onClick={handleSaveWithMetadata}
+            disabled={isSaving || editorState.isProcessing}
+            className="w-full flex flex-col items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-60 text-white font-semibold rounded-lg border border-green-500 shadow-lg shadow-green-900/50 transition-all hover:scale-[1.02]"
+          >
+            <div className="flex items-center gap-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span className="text-base">{isSaving ? 'Guardando...' : 'Guardar Imagen'}</span>
+            </div>
+            {!isSaving && (
+              <div className="text-xs text-green-200 font-normal">
+                Como: {currentImage.originalFilename.replace(/\.[^/.]+$/, '')}_v{(currentImage.currentVersionIndex ?? 0) + 1}.{currentImage.format === 'heic' ? 'heic' : 'jpg'}
+              </div>
+            )}
+          </button>
+          <div className="mt-2 text-[10px] text-gray-400 space-y-0.5">
+            <div className="flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              Misma resolución y tamaño
+            </div>
+            <div className="flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              Todos los metadatos EXIF/GPS
+            </div>
+            <div className="flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+              Calidad original preservada
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Error */}

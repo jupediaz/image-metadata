@@ -40,7 +40,12 @@ export default function EditorShell({ imageId }: EditorShellProps) {
   }, [imageId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts
-  useKeyboardShortcuts({ enabled: true });
+  useKeyboardShortcuts({
+    enabled: true,
+    onZoomIn: () => editorStore.setZoom(Math.min(5, editorStore.zoom + 0.25)),
+    onZoomOut: () => editorStore.setZoom(Math.max(0.1, editorStore.zoom - 0.25)),
+    onFitAll: () => canvasRef.current?.fitAll(),
+  });
 
   // Safe back: persist state, then navigate
   const handleBack = useCallback(() => {
@@ -92,9 +97,13 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           canUndo={editorStore.canUndo()}
           canRedo={editorStore.canRedo()}
           onExport={() => canvasRef.current?.exportImage()}
+          onClearMasks={() => canvasRef.current?.clearMasks()}
+          onClearInpaint={() => canvasRef.current?.clearInpaintMask()}
+          onClearProtect={() => canvasRef.current?.clearProtectMask()}
           activeTool={editorStore.activeTool}
           onToolChange={editorStore.setTool}
           brushSize={editorStore.brushSize}
+          onBrushSizeChange={editorStore.setBrushSize}
         />
 
         {/* Body */}

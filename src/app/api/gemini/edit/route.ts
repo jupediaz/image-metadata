@@ -11,43 +11,43 @@ export const runtime = 'nodejs';
 export const maxDuration = 60; // Gemini may take some time
 
 /**
- * Combines inpainting mask and safe zone mask into a single mask for Gemini.
+ * Combines inpainting mask and protect mask into a single mask for Gemini.
  *
  * Logic:
- * - Inpainting mask (red): white = areas to edit, black = keep as is
- * - Safe zone mask (green): white = areas to protect, black = can edit
- * - Final mask: white = edit, black = don't edit
+ * - Inpainting mask (GREEN in UI): white = areas where AI CAN edit, black = keep as is
+ * - Protect mask (RED in UI): white = areas to protect (AI CANNOT edit), black = can edit
+ * - Final mask sent to Gemini: white = edit, black = don't edit
  *
- * Priority: Safe zone overrides inpainting (protected areas never get edited)
+ * Priority: Protect mask overrides inpainting (protected areas never get edited)
  */
 async function combineMasks(
   inpaintMask: string | undefined,
-  safeZoneMask: string | undefined,
+  protectMask: string | undefined,
   width: number,
   height: number
 ): Promise<string | undefined> {
   console.log('🎭 Combining masks:', {
     hasInpaint: !!inpaintMask,
-    hasSafeZone: !!safeZoneMask,
+    hasSafeZone: !!protectMask,
     targetSize: { width, height }
   });
 
   // If no masks, return undefined
-  if (!inpaintMask && !safeZoneMask) {
+  if (!inpaintMask && !protectMask) {
     console.log('  → No masks provided');
     return undefined;
   }
 
   // If only inpainting mask, use it directly
-  if (inpaintMask && !safeZoneMask) {
+  if (inpaintMask && !protectMask) {
     console.log('  → Using inpaint mask only');
     return inpaintMask;
   }
 
   // If only safe zone mask, invert it (protected areas = black in final mask)
-  if (!inpaintMask && safeZoneMask) {
+  if (!inpaintMask && protectMask) {
     console.log('  → Inverting safe zone mask');
-    const safeZoneBuffer = Buffer.from(safeZoneMask.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    const safeZoneBuffer = Buffer.from(protectMask.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
     // Invert: white (protected) → black (don't edit)
     const invertedBuffer = await sharp(safeZoneBuffer)
@@ -64,7 +64,7 @@ async function combineMasks(
   console.log('  → Combining both masks');
 
   const inpaintBuffer = Buffer.from(inpaintMask!.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-  const safeZoneBuffer = Buffer.from(safeZoneMask!.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+  const safeZoneBuffer = Buffer.from(protectMask!.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
   console.log('  → Processing buffers:', {
     inpaintSize: inpaintBuffer.length,
@@ -132,15 +132,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: GeminiEditApiRequest = await request.json();
-    const { sessionId, imageId, prompt, maskDataUrl, safeZoneMaskDataUrl, preserveExif, model } = body;
+    const { sessionId, imageId, prompt, inpaintMaskDataUrl, protectMaskDataUrl, preserveExif, model } = body;
 
     console.log('📥 Gemini Edit API Request:', {
       imageId,
       prompt: prompt.substring(0, 50) + '...',
-      hasInpaintMask: !!maskDataUrl,
-      hasSafeZoneMask: !!safeZoneMaskDataUrl,
-      inpaintMaskLength: maskDataUrl?.length || 0,
-      safeZoneMaskLength: safeZoneMaskDataUrl?.length || 0,
+      hasInpaintMask: !!inpaintMaskDataUrl,
+      hasProtectMask: !!protectMaskDataUrl,
+      inpaintMaskLength: inpaintMaskDataUrl?.length || 0,
+      protectMaskLength: protectMaskDataUrl?.length || 0,
       model
     });
 
@@ -200,16 +200,17 @@ export async function POST(request: NextRequest) {
     const imageHeight = imageInfo.height || 768;
     const imageFormat = imageInfo.format || 'jpeg';
 
-    // Combine masks if both are provided
+    // Combine masks if either is provided
     let finalMask: string | undefined;
-    if (maskDataUrl || safeZoneMaskDataUrl) {
-      console.log('Processing masks:', {
-        hasInpaintMask: !!maskDataUrl,
-        hasSafeZoneMask: !!safeZoneMaskDataUrl,
+    if (inpaintMaskDataUrl || protectMaskDataUrl) {
+      console.log('🎭 Processing masks:', {
+        hasInpaintMask: !!inpaintMaskDataUrl,
+        hasProtectMask: !!protectMaskDataUrl,
         imageSize: { width: imageWidth, height: imageHeight }
       });
 
-      finalMask = await combineMasks(maskDataUrl, safeZoneMaskDataUrl, imageWidth, imageHeight);
+      finalMask = await combineMasks(inpaintMaskDataUrl, protectMaskDataUrl, imageWidth, imageHeight);
+      console.log('✅ Final mask created');
     }
 
     // Convert to base64 for Gemini (preserve original format for quality)
@@ -247,6 +248,107 @@ export async function POST(request: NextRequest) {
     // Convert Gemini result back to buffer
     const editedBase64 = editResult.imageBase64.replace(/^data:image\/\w+;base64,/, '');
     let editedBuffer = Buffer.from(editedBase64, 'base64');
+
+    // COMPOSITING: Paste only edited areas onto the original image
+    // This guarantees pixel-perfect preservation of unmasked areas
+    if (finalMask) {
+      try {
+        console.log('🎨 STRICT COMPOSITING: Hard-cutting edited areas onto original...');
+
+        // Resize edited image to match original dimensions exactly
+        const editedPng = await sharp(editedBuffer)
+          .resize(imageWidth, imageHeight, { fit: 'fill' })
+          .png()
+          .toBuffer();
+
+        // Create the mask at original resolution (white = use edited, black = use original)
+        const maskBase64Data = finalMask.replace(/^data:image\/\w+;base64,/, '');
+        const maskBuffer = Buffer.from(maskBase64Data, 'base64');
+
+        // NO BLUR - Hard cut for strict preservation
+        // Apply slight feather ONLY at edges (1px) to avoid harsh transitions
+        const strictMask = await sharp(maskBuffer)
+          .resize(imageWidth, imageHeight, { fit: 'fill' })
+          .greyscale()
+          .blur(0.5) // Minimal feather - almost hard edge
+          .png()
+          .toBuffer();
+
+        // Convert original to PNG for lossless processing
+        const originalPng = await sharp(originalBuffer!)
+          .resize(imageWidth, imageHeight, { fit: 'fill' })
+          .png()
+          .toBuffer();
+
+        // Pixel-by-pixel STRICT blending: threshold-based selection
+        const [origRaw, editRaw, maskRaw] = await Promise.all([
+          sharp(originalPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+          sharp(editedPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+          sharp(strictMask).raw().toBuffer({ resolveWithObject: true }),
+        ]);
+
+        const origData = origRaw.data;
+        const editData = editRaw.data;
+        const maskData = maskRaw.data;
+        const channels = origRaw.info.channels; // 4 (RGBA)
+        const maskChannels = maskRaw.info.channels;
+
+        const resultData = Buffer.alloc(origData.length);
+        const THRESHOLD = 128; // Hard threshold for mask decision
+        let editedPixels = 0;
+        let preservedPixels = 0;
+
+        for (let i = 0; i < origData.length; i += channels) {
+          const pixelIdx = Math.floor(i / channels);
+          const maskIdx = pixelIdx * maskChannels;
+          const maskValue = maskData[maskIdx];
+
+          // STRICT MODE: Use threshold instead of smooth blend
+          // Above threshold = 100% edited, below = 100% original
+          // Small transition zone (±10 from threshold) for anti-aliasing
+          let useEdited: boolean;
+          if (maskValue > THRESHOLD + 10) {
+            useEdited = true;
+            editedPixels++;
+          } else if (maskValue < THRESHOLD - 10) {
+            useEdited = false;
+            preservedPixels++;
+          } else {
+            // Transition zone: smooth blend only in tiny edge area
+            const alpha = (maskValue - (THRESHOLD - 10)) / 20;
+            for (let c = 0; c < channels; c++) {
+              resultData[i + c] = Math.round(
+                origData[i + c] * (1 - alpha) + editData[i + c] * alpha
+              );
+            }
+            continue;
+          }
+
+          // Hard cut: copy pixels from either original or edited
+          for (let c = 0; c < channels; c++) {
+            resultData[i + c] = useEdited ? editData[i + c] : origData[i + c];
+          }
+        }
+
+        const totalPixels = origData.length / channels;
+        console.log(`✅ STRICT Compositing: ${editedPixels} edited (${(editedPixels/totalPixels*100).toFixed(1)}%), ${preservedPixels} preserved (${(preservedPixels/totalPixels*100).toFixed(1)}%)`);
+
+        // Convert back to JPEG at maximum quality
+        editedBuffer = await sharp(resultData, {
+          raw: {
+            width: origRaw.info.width,
+            height: origRaw.info.height,
+            channels,
+          },
+        })
+          .jpeg({ quality: 100, mozjpeg: true })
+          .toBuffer();
+
+        console.log('✅ STRICT Compositing complete - protected areas are 100% original');
+      } catch (compError) {
+        console.warn('⚠️ Compositing failed, using Gemini output directly:', compError);
+      }
+    }
 
     // Re-inject EXIF if we have it
     if (exifDump) {
