@@ -32,6 +32,9 @@ export default function EditorShell({ imageId }: EditorShellProps) {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
   const [activeTab, setActiveTab] = useState<'ai' | 'properties' | 'history'>('ai');
+  const [inpaintVisible, setInpaintVisible] = useState(true);
+  const [protectVisible, setProtectVisible] = useState(true);
+  const [strokeState, setStrokeState] = useState({ canUndo: false, canRedo: false });
 
   // Initialize editor store
   useEffect(() => {
@@ -42,6 +45,8 @@ export default function EditorShell({ imageId }: EditorShellProps) {
   // Keyboard shortcuts
   useKeyboardShortcuts({
     enabled: true,
+    onUndo: () => { canvasRef.current?.undoStroke(); },
+    onRedo: () => { canvasRef.current?.redoStroke(); },
     onZoomIn: () => editorStore.setZoom(Math.min(5, editorStore.zoom + 0.25)),
     onZoomOut: () => editorStore.setZoom(Math.max(0.1, editorStore.zoom - 0.25)),
     onFitAll: () => canvasRef.current?.fitAll(),
@@ -92,10 +97,10 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           filename={image.filename}
           onBack={handleBack}
           imageId={imageId}
-          onUndo={() => editorStore.undo()}
-          onRedo={() => editorStore.redo()}
-          canUndo={editorStore.canUndo()}
-          canRedo={editorStore.canRedo()}
+          onUndo={() => canvasRef.current?.undoStroke() || editorStore.undo()}
+          onRedo={() => canvasRef.current?.redoStroke() || editorStore.redo()}
+          canUndo={strokeState.canUndo || editorStore.canUndo()}
+          canRedo={strokeState.canRedo || editorStore.canRedo()}
           onExport={() => canvasRef.current?.exportImage()}
           onClearMasks={() => canvasRef.current?.clearMasks()}
           onClearInpaint={() => canvasRef.current?.clearInpaintMask()}
@@ -104,6 +109,18 @@ export default function EditorShell({ imageId }: EditorShellProps) {
           onToolChange={editorStore.setTool}
           brushSize={editorStore.brushSize}
           onBrushSizeChange={editorStore.setBrushSize}
+          inpaintVisible={inpaintVisible}
+          protectVisible={protectVisible}
+          onToggleInpaintVisibility={() => {
+            const next = !inpaintVisible;
+            setInpaintVisible(next);
+            canvasRef.current?.setInpaintVisibility(next);
+          }}
+          onToggleProtectVisibility={() => {
+            const next = !protectVisible;
+            setProtectVisible(next);
+            canvasRef.current?.setProtectVisibility(next);
+          }}
         />
 
         {/* Body */}
@@ -131,6 +148,7 @@ export default function EditorShell({ imageId }: EditorShellProps) {
               zoom={editorStore.zoom}
               onZoomChange={editorStore.setZoom}
               onCursorMove={setCursorPos}
+              onStrokeHistoryChange={(canUndo, canRedo) => setStrokeState({ canUndo, canRedo })}
             />
           </div>
 

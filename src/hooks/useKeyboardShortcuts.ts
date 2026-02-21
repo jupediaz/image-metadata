@@ -26,7 +26,8 @@ export function useKeyboardShortcuts({
   const redo = useEditorStore((s) => s.redo);
 
   // Space+drag temporary pan: hold Space to switch to pan, release to restore
-  const prevToolRef = useRef<string | null>(null);
+  type ToolType = 'select' | 'pan' | 'brush' | 'eraser' | 'protect' | 'lasso' | 'zoom';
+  const prevToolRef = useRef<ToolType | null>(null);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -122,7 +123,7 @@ export function useKeyboardShortcuts({
     (e: KeyboardEvent) => {
       // Release Space = restore previous tool
       if (e.key === ' ' && prevToolRef.current !== null) {
-        setTool(prevToolRef.current as any);
+        setTool(prevToolRef.current);
         prevToolRef.current = null;
       }
     },

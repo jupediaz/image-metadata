@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3400",
+    "dev": "next dev -p 6605",
     "dev:3333": "next dev -p 3333",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/generative-ai": "^0.24.1",
     "archiver": "^7.0.1",
     "date-fns": "^4.1.0",
     "dexie": "^4.3.0",

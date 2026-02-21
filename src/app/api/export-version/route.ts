@@ -96,19 +96,25 @@ export async function POST(request: NextRequest) {
         targetFileSize: originalFileSize,
       });
     } else if (targetFormat === 'jpg') {
-      const tempInput = path.join(os.tmpdir(), `jpg-input-${Date.now()}.png`);
-      const tempOutput = path.join(os.tmpdir(), `jpg-output-${Date.now()}.jpg`);
+      // The composited version from route.ts is already at the correct dimensions
+      // and JPEG quality 100. Avoid double-encoding (which degrades quality).
+      // Only re-encode if the file is NOT already JPEG or dimensions don't match.
+      const sharp = (await import('sharp')).default;
+      const meta = await sharp(versionBuffer).metadata();
+      const needsResize = meta.width !== originalWidth || meta.height !== originalHeight;
+      const isJpeg = meta.format === 'jpeg';
 
-      try {
-        await writeFile(tempInput, versionBuffer);
-        const quality = originalQuality || 90;
-        await execAsync(
-          `magick "${tempInput}" -resize ${originalWidth}x${originalHeight}! -quality ${quality} "${tempOutput}"`
-        );
-        finalBuffer = await readFile(tempOutput);
-      } finally {
-        await unlink(tempInput).catch(() => {});
-        await unlink(tempOutput).catch(() => {});
+      if (isJpeg && !needsResize) {
+        // Already correct format and dimensions — pass through as-is
+        console.log('JPG export: skipping re-encode (already correct dimensions and format)');
+        finalBuffer = versionBuffer;
+      } else {
+        // Need to convert or resize — use sharp with maximum quality
+        console.log(`JPG export: re-encoding (resize: ${needsResize}, format: ${meta.format})`);
+        finalBuffer = await sharp(versionBuffer)
+          .resize(originalWidth, originalHeight, { fit: 'fill' })
+          .jpeg({ quality: 100, mozjpeg: true })
+          .toBuffer();
       }
     }
 

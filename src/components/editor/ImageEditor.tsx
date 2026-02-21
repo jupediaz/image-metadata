@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useImageStore } from '@/hooks/useImageStore';
 import { useProgress } from '@/hooks/useProgress';
@@ -21,7 +21,7 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
     sessionId,
     images,
     cancelAiEdit,
-    setEditorMask,
+    setEditorInpaintMask,
     setEditorPrompt,
     setEditorProcessing,
     setEditorPreview,
@@ -31,22 +31,35 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
 
   const { startProgress, updateProgress, finishProgress, failProgress } = useProgress();
   const [preserveExif, setPreserveExif] = useState(true);
-  // CRITICAL: Default model MUST be Pro Image
-  const [selectedModel, setSelectedModel] = useState('gemini-3-pro-image-preview');
+  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
   const [safeZoneMask, setSafeZoneMask] = useState<string | null>(null);
 
+  // AbortController for cancelling the API request
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Memoize callbacks to prevent InpaintingCanvas re-renders
+  const handleMaskChange = useCallback((maskDataUrl: string | null) => {
+    setEditorInpaintMask(maskDataUrl);
+  }, [setEditorInpaintMask]);
+
+  const handleSafeZoneMaskChange = useCallback((maskDataUrl: string | null) => {
+    setSafeZoneMask(maskDataUrl);
+  }, []);
+
   const modelOptions = [
-    {
-      value: 'gemini-3-pro-image-preview',
-      label: 'Pro Image',
-      nickname: 'Nano Banana Pro',
-      description: 'Highest quality (slower)',
-    },
     {
       value: 'gemini-2.5-flash-image',
       label: 'Flash Image',
       nickname: 'Nano Banana',
-      description: 'Fast generation (recommended)',
+      description: 'Rapido y estable (recomendado)',
+      estimatedSeconds: 15,
+    },
+    {
+      value: 'gemini-3-pro-image-preview',
+      label: 'Pro Image',
+      nickname: 'Nano Banana Pro',
+      description: 'Mayor calidad, mas lento (experimental)',
+      estimatedSeconds: 45,
     },
   ];
 
@@ -60,30 +73,54 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
   }
 
   const imageUrl = `/api/image?sessionId=${sessionId}&id=${currentImage.id}`;
+  const currentModelInfo = modelOptions.find(m => m.value === selectedModel);
 
   const handleBack = () => {
+    // Cancel any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     cancelAiEdit();
     router.push(`/image/${imageId}`);
+  };
+
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setEditorProcessing(false);
+    setEditorError(null);
   };
 
   const handleGenerate = async () => {
     if (!editorState.prompt.trim()) return;
 
+    // Create new AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Timeout: 60s for all models
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 60000);
+
     setEditorProcessing(true);
     setEditorError(null);
     setEditorPreview(null);
 
-    const progressId = startProgress('ai-edit', 'Generando edición con IA...');
+    const progressId = startProgress('ai-edit', 'Generando edicion con IA...');
 
     try {
-      updateProgress(progressId, 10, 'Preparando solicitud...');
+      updateProgress(progressId, 5, 'Preparando solicitud...');
 
       const request: GeminiEditApiRequest = {
         sessionId,
         imageId: currentImage.id,
         prompt: editorState.prompt,
-        maskDataUrl: editorState.maskDataUrl || undefined,
-        safeZoneMaskDataUrl: safeZoneMask || undefined,
+        inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
+        protectMaskDataUrl: safeZoneMask || undefined,
         preserveExif,
         model: selectedModel,
       };
@@ -100,13 +137,16 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
         headers['x-gemini-api-key'] = userApiKey;
       }
 
-      updateProgress(progressId, 20, 'Enviando a Gemini AI...');
+      updateProgress(progressId, 15, 'Enviando a Gemini AI...');
 
       const response = await fetch('/api/gemini/edit', {
         method: 'POST',
         headers,
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       updateProgress(progressId, 80, 'Procesando resultado...');
 
@@ -116,13 +156,13 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
         throw new Error(data.error || 'Failed to generate edit');
       }
 
-      updateProgress(progressId, 90, 'Guardando versión...');
+      updateProgress(progressId, 90, 'Guardando version...');
 
       const version: EditVersion = {
         id: data.newVersionId,
         timestamp: new Date(),
         prompt: editorState.prompt,
-        maskDataUrl: editorState.maskDataUrl || undefined,
+        inpaintMaskDataUrl: editorState.inpaintMaskDataUrl || undefined,
         imageUrl: data.editedImageUrl,
         thumbnailUrl: data.thumbnailUrl,
         model: selectedModel,
@@ -130,41 +170,45 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
         originalExifDump: data.exifDump,
       };
 
-      // Save to Zustand store
       saveEditVersion(currentImage.id, version);
 
       // Persist to IndexedDB
       try {
         updateProgress(progressId, 95, 'Persistiendo en IndexedDB...');
-
         const [versionBlob, thumbnailBlob] = await Promise.all([
           fetch(data.editedImageUrl).then((r) => r.blob()),
           data.thumbnailUrl ? fetch(data.thumbnailUrl).then((r) => r.blob()) : Promise.resolve(undefined),
         ]);
-
         await persistEditVersion(currentImage.id, version, versionBlob, thumbnailBlob);
-        console.log(`✅ Persisted edit version: ${version.id}`);
       } catch (persistError) {
         console.error('Failed to persist edit version:', persistError);
-        // Don't fail the whole operation if persistence fails
       }
 
       setEditorPreview(data.editedImageUrl);
-
       finishProgress(progressId);
 
-      // Redirect to comparison view with fromEditor flag
       router.push(`/image/${imageId}/compare?left=original&right=model-${selectedModel}&fromEditor=true`);
     } catch (error) {
-      console.error('Error generating edit:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to generate edit';
-      setEditorError(errorMsg);
-      failProgress(progressId, errorMsg);
+      clearTimeout(timeout);
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        // User cancelled or timeout
+        const wasTimeout = !abortControllerRef.current;
+        const msg = wasTimeout
+          ? 'La solicitud ha expirado (60s). Intenta con el modelo Flash que es mas rapido.'
+          : 'Edicion cancelada por el usuario.';
+        setEditorError(msg);
+        failProgress(progressId, msg);
+      } else {
+        const errorMsg = error instanceof Error ? error.message : 'Failed to generate edit';
+        setEditorError(errorMsg);
+        failProgress(progressId, errorMsg);
+      }
     } finally {
+      abortControllerRef.current = null;
       setEditorProcessing(false);
     }
   };
-
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -189,7 +233,7 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
             </div>
 
             {editorState.error && (
-              <div className="px-4 py-2 bg-red-900/50 border border-red-700 rounded-lg text-sm">
+              <div className="px-4 py-2 bg-red-900/50 border border-red-700 rounded-lg text-sm max-w-md truncate">
                 {editorState.error}
               </div>
             )}
@@ -204,8 +248,8 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
             <div className="lg:col-span-2">
               <InpaintingCanvas
                 imageUrl={imageUrl}
-                onMaskChange={(maskDataUrl) => setEditorMask(maskDataUrl)}
-                onSafeZoneMaskChange={(maskDataUrl) => setSafeZoneMask(maskDataUrl)}
+                onMaskChange={handleMaskChange}
+                onSafeZoneMaskChange={handleSafeZoneMaskChange}
               />
             </div>
 
@@ -215,32 +259,41 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
                 value={editorState.prompt}
                 onChange={(prompt) => setEditorPrompt(prompt)}
                 onGenerate={handleGenerate}
+                onCancel={handleCancel}
                 isProcessing={editorState.isProcessing}
-                processingModel={modelOptions.find(m => m.value === selectedModel)?.nickname}
+                processingModel={currentModelInfo?.nickname}
+                estimatedSeconds={currentModelInfo?.estimatedSeconds ?? 20}
               />
 
               {/* Model Selector */}
               <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
                 <label className="block mb-3">
-                  <div className="font-medium text-gray-200 mb-1">AI Model</div>
+                  <div className="font-medium text-gray-200 mb-1">Modelo IA</div>
                   <div className="text-xs text-gray-400 mb-3">
-                    Choose the model for image editing
+                    Elige el modelo para la edicion
                   </div>
                 </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  disabled={editorState.isProcessing}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
-                >
+                <div className="space-y-2">
                   {modelOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label} ({option.nickname})
-                    </option>
+                    <button
+                      key={option.value}
+                      onClick={() => setSelectedModel(option.value)}
+                      disabled={editorState.isProcessing}
+                      className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
+                        selectedModel === option.value
+                          ? 'bg-blue-900/30 border-blue-500 text-white'
+                          : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:border-gray-500'
+                      } disabled:opacity-50`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium">{option.label}</div>
+                          <div className="text-xs text-gray-400">{option.description}</div>
+                        </div>
+                        <div className="text-xs text-gray-500">~{option.estimatedSeconds}s</div>
+                      </div>
+                    </button>
                   ))}
-                </select>
-                <div className="mt-2 text-xs text-gray-400">
-                  {modelOptions.find((m) => m.value === selectedModel)?.description}
                 </div>
               </div>
 
@@ -255,30 +308,16 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
                     className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
                   />
                   <div>
-                    <div className="font-medium text-gray-200">Preserve Metadata</div>
+                    <div className="font-medium text-gray-200">Preservar Metadata</div>
                     <div className="text-xs text-gray-400">
-                      Keep original EXIF, GPS, and camera information
+                      Mantener EXIF, GPS e informacion de camara
                     </div>
                   </div>
                 </label>
-              </div>
-
-              {/* Info */}
-              <div className="p-4 bg-gray-800 rounded-lg border border-gray-700 text-sm text-gray-400">
-                <p className="mb-2">
-                  <strong className="text-gray-300">How it works:</strong>
-                </p>
-                <ol className="list-decimal list-inside space-y-1">
-                  <li>Draw a mask over areas to edit (optional)</li>
-                  <li>Describe your desired changes</li>
-                  <li>Click &quot;Generate AI Edit&quot;</li>
-                  <li>Review and accept or refine</li>
-                </ol>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }

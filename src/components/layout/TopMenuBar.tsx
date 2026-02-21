@@ -20,6 +20,10 @@ interface TopMenuBarProps {
   onToolChange: (tool: EditorTool) => void;
   brushSize: number;
   onBrushSizeChange: (size: number) => void;
+  inpaintVisible: boolean;
+  protectVisible: boolean;
+  onToggleInpaintVisibility: () => void;
+  onToggleProtectVisibility: () => void;
 }
 
 interface MenuItem {
@@ -46,6 +50,10 @@ export default function TopMenuBar({
   onToolChange,
   brushSize,
   onBrushSizeChange,
+  inpaintVisible,
+  protectVisible,
+  onToggleInpaintVisibility,
+  onToggleProtectVisibility,
 }: TopMenuBarProps) {
   const router = useRouter();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -139,51 +147,113 @@ export default function TopMenuBar({
       <div className="w-px h-4 bg-[#3c3c3c] mx-2" />
 
       {/* Editing Mode Buttons - CENTER */}
-      <div className="flex-1 flex items-center justify-center gap-3">
-        <button
-          onClick={() => onToolChange('brush')}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg font-medium transition-all ${
-            activeTool === 'brush'
-              ? 'bg-green-600 text-white shadow-lg shadow-green-500/30'
-              : 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-600/40'
-          }`}
-          title="Brush (B) - Pintar zona a modificar"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 19l7-7 3 3-7 7-3-3z" />
-            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-            <path d="M2 2l7.586 7.586" />
-            <circle cx="11" cy="11" r="2" />
-          </svg>
-          <span>Zona a Modificar</span>
-          {activeTool === 'brush' && brushSize && (
-            <span className="text-xs bg-green-700 px-1.5 py-0.5 rounded">
-              {brushSize}px
-            </span>
-          )}
-        </button>
+      <div className="flex-1 flex items-center justify-center gap-2">
+        {/* Inpaint zone group: eye + brush + clear */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onToggleInpaintVisibility}
+            title={inpaintVisible ? 'Ocultar zona a modificar' : 'Mostrar zona a modificar'}
+            className="flex items-center justify-center w-7 h-7 rounded text-green-400 hover:bg-green-600/20 transition-colors"
+          >
+            {inpaintVisible ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={() => onToolChange('brush')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all text-sm ${
+              activeTool === 'brush'
+                ? 'bg-green-600 text-white shadow-lg shadow-green-500/30'
+                : 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-600/40'
+            }`}
+            title="Brush (B) - Pintar zona a modificar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 19l7-7 3 3-7 7-3-3z" />
+              <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+              <path d="M2 2l7.586 7.586" />
+              <circle cx="11" cy="11" r="2" />
+            </svg>
+            <span>Zona a Modificar</span>
+            {activeTool === 'brush' && brushSize > 0 && (
+              <span className="text-xs bg-green-700 px-1.5 py-0.5 rounded">
+                {brushSize}px
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onClearInpaint}
+            title="Borrar zona a modificar"
+            className="flex items-center justify-center w-6 h-6 rounded text-green-400/60 hover:text-green-300 hover:bg-green-600/20 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
-        <button
-          onClick={() => onToolChange('protect')}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg font-medium transition-all ${
-            activeTool === 'protect'
-              ? 'bg-red-600 text-white shadow-lg shadow-red-500/30'
-              : 'bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-600/40'
-          }`}
-          title="Protect (P) - Pintar zona protegida"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            <path d="M12 8v4" />
-            <path d="M12 16h.01" />
-          </svg>
-          <span>Zona Protegida</span>
-          {activeTool === 'protect' && brushSize && (
-            <span className="text-xs bg-red-700 px-1.5 py-0.5 rounded">
-              {brushSize}px
-            </span>
-          )}
-        </button>
+        {/* Protect zone group: eye + brush + clear */}
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onToggleProtectVisibility}
+            title={protectVisible ? 'Ocultar zona protegida' : 'Mostrar zona protegida'}
+            className="flex items-center justify-center w-7 h-7 rounded text-red-400 hover:bg-red-600/20 transition-colors"
+          >
+            {protectVisible ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            )}
+          </button>
+          <button
+            onClick={() => onToolChange('protect')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition-all text-sm ${
+              activeTool === 'protect'
+                ? 'bg-red-600 text-white shadow-lg shadow-red-500/30'
+                : 'bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-600/40'
+            }`}
+            title="Protect (P) - Pintar zona protegida"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="M12 8v4" />
+              <path d="M12 16h.01" />
+            </svg>
+            <span>Zona Protegida</span>
+            {activeTool === 'protect' && brushSize > 0 && (
+              <span className="text-xs bg-red-700 px-1.5 py-0.5 rounded">
+                {brushSize}px
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onClearProtect}
+            title="Borrar zona protegida"
+            className="flex items-center justify-center w-6 h-6 rounded text-red-400/60 hover:text-red-300 hover:bg-red-600/20 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
         {/* Brush size control - visible when brush or protect is active */}
         {(activeTool === 'brush' || activeTool === 'protect' || activeTool === 'eraser') && (

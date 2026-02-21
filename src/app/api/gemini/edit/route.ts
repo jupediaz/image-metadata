@@ -6,6 +6,13 @@ import { editImageWithGemini } from '@/lib/gemini-client';
 import { extractExif, injectExif } from '@/lib/exif-preservation';
 import { GeminiEditApiRequest, GeminiEditApiResponse } from '@/types/api';
 import sharp from 'sharp';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, readFile, unlink } from 'fs/promises';
+import path from 'path';
+import os from 'os';
+
+const execAsync = promisify(exec);
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Gemini may take some time
@@ -125,6 +132,40 @@ async function combineMasks(
 
   console.log('  → Combined mask created successfully');
   return `data:image/png;base64,${combinedBuffer.toString('base64')}`;
+}
+
+/**
+ * Ensure a buffer is in a format sharp can fully decode (JPEG/PNG/WebP/TIFF).
+ * HEIC/HEIF files from iPhones crash sharp's pixel pipeline if the HEIF codec
+ * isn't compiled in.  Falls back to macOS `sips` or ImageMagick.
+ */
+async function ensureSharpDecodable(buf: Buffer): Promise<Buffer> {
+  try {
+    // Quick test: can sharp decode this to raw pixels?
+    await sharp(buf, { failOn: 'error' }).raw().toBuffer();
+    return buf; // Already decodable
+  } catch {
+    console.log('⚠️ Sharp cannot decode original format (likely HEIC), converting via system tool...');
+    const ts = Date.now();
+    const tmpIn = path.join(os.tmpdir(), `sharp-conv-in-${ts}`);
+    const tmpOut = path.join(os.tmpdir(), `sharp-conv-out-${ts}.png`);
+    try {
+      await writeFile(tmpIn, buf);
+      try {
+        // macOS: sips handles HEIC natively
+        await execAsync(`sips -s format png "${tmpIn}" --out "${tmpOut}"`, { timeout: 30000 });
+      } catch {
+        // Fallback: ImageMagick
+        await execAsync(`magick "${tmpIn}" "${tmpOut}"`, { timeout: 30000 });
+      }
+      const converted = await readFile(tmpOut);
+      console.log(`✅ Converted original to PNG (${buf.length} → ${converted.length} bytes)`);
+      return converted;
+    } finally {
+      await unlink(tmpIn).catch(() => {});
+      await unlink(tmpOut).catch(() => {});
+    }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -247,7 +288,7 @@ export async function POST(request: NextRequest) {
 
     // Convert Gemini result back to buffer
     const editedBase64 = editResult.imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    let editedBuffer = Buffer.from(editedBase64, 'base64');
+    let editedBuffer: Buffer = Buffer.from(editedBase64, 'base64');
 
     // COMPOSITING: Paste only edited areas onto the original image
     // This guarantees pixel-perfect preservation of unmasked areas
@@ -255,27 +296,42 @@ export async function POST(request: NextRequest) {
       try {
         console.log('🎨 STRICT COMPOSITING: Hard-cutting edited areas onto original...');
 
-        // Resize edited image to match original dimensions exactly
+        // Ensure the original is in a format sharp can decode (HEIC → PNG if needed)
+        const decodableOriginal = await ensureSharpDecodable(originalBuffer!);
+
+        // Resize edited image to match original dimensions and sharpen
         const editedPng = await sharp(editedBuffer)
           .resize(imageWidth, imageHeight, { fit: 'fill' })
+          .sharpen({
+            sigma: 0.8,    // Fine detail radius (text edges)
+            m1: 0.5,       // Flat area boost (low to avoid noise)
+            m2: 3.0,       // Edge boost (high for crisp text)
+            x1: 2.0,       // Flat/edge threshold
+            y2: 5.0,       // Max brightening (controls halos)
+            y3: 10.0,      // Max darkening
+          })
           .png()
           .toBuffer();
+        console.log('🔍 Applied selective sharpening to edited image');
 
         // Create the mask at original resolution (white = use edited, black = use original)
         const maskBase64Data = finalMask.replace(/^data:image\/\w+;base64,/, '');
         const maskBuffer = Buffer.from(maskBase64Data, 'base64');
 
-        // NO BLUR - Hard cut for strict preservation
-        // Apply slight feather ONLY at edges (1px) to avoid harsh transitions
+        // Log mask statistics for debugging
+        const maskInfo = await sharp(maskBuffer).metadata();
+        console.log('🎭 Mask info:', { width: maskInfo.width, height: maskInfo.height, channels: maskInfo.channels, format: maskInfo.format });
+
+        // Light feather at mask edges for natural transitions
         const strictMask = await sharp(maskBuffer)
           .resize(imageWidth, imageHeight, { fit: 'fill' })
           .greyscale()
-          .blur(0.5) // Minimal feather - almost hard edge
+          .blur(1.5) // Soft feather for natural edge blending
           .png()
           .toBuffer();
 
-        // Convert original to PNG for lossless processing
-        const originalPng = await sharp(originalBuffer!)
+        // Convert original to PNG for lossless compositing
+        const originalPng = await sharp(decodableOriginal)
           .resize(imageWidth, imageHeight, { fit: 'fill' })
           .png()
           .toBuffer();
@@ -294,7 +350,8 @@ export async function POST(request: NextRequest) {
         const maskChannels = maskRaw.info.channels;
 
         const resultData = Buffer.alloc(origData.length);
-        const THRESHOLD = 128; // Hard threshold for mask decision
+        const THRESHOLD = 128;
+        const TRANSITION = 30; // ±30 around threshold for smooth edge blending
         let editedPixels = 0;
         let preservedPixels = 0;
 
@@ -303,19 +360,16 @@ export async function POST(request: NextRequest) {
           const maskIdx = pixelIdx * maskChannels;
           const maskValue = maskData[maskIdx];
 
-          // STRICT MODE: Use threshold instead of smooth blend
-          // Above threshold = 100% edited, below = 100% original
-          // Small transition zone (±10 from threshold) for anti-aliasing
           let useEdited: boolean;
-          if (maskValue > THRESHOLD + 10) {
+          if (maskValue > THRESHOLD + TRANSITION) {
             useEdited = true;
             editedPixels++;
-          } else if (maskValue < THRESHOLD - 10) {
+          } else if (maskValue < THRESHOLD - TRANSITION) {
             useEdited = false;
             preservedPixels++;
           } else {
-            // Transition zone: smooth blend only in tiny edge area
-            const alpha = (maskValue - (THRESHOLD - 10)) / 20;
+            // Transition zone: smooth blend at mask edges
+            const alpha = (maskValue - (THRESHOLD - TRANSITION)) / (TRANSITION * 2);
             for (let c = 0; c < channels; c++) {
               resultData[i + c] = Math.round(
                 origData[i + c] * (1 - alpha) + editData[i + c] * alpha
@@ -346,18 +400,24 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ STRICT Compositing complete - protected areas are 100% original');
       } catch (compError) {
-        console.warn('⚠️ Compositing failed, using Gemini output directly:', compError);
+        // CRITICAL: Do NOT silently fall back to raw Gemini output.
+        // That replaces the ENTIRE image with AI output, destroying quality everywhere.
+        console.error('❌ COMPOSITING FAILED — this is a critical error:', compError);
+        console.error('❌ The mask will NOT be applied. The raw Gemini output is used as fallback.');
+        console.error('❌ If this is a HEIC decode issue, ensure sips or magick is available.');
       }
     }
 
     // Re-inject EXIF if we have it
+    // CRITICAL: Use the composited editedBuffer, NOT the raw Gemini output
     if (exifDump) {
       try {
-        const withExif = injectExif(editResult.imageBase64, exifDump);
+        const compositedBase64 = `data:image/jpeg;base64,${editedBuffer.toString('base64')}`;
+        const withExif = injectExif(compositedBase64, exifDump);
         const withExifBase64 = withExif.replace(/^data:image\/\w+;base64,/, '');
         const uint8Array = Uint8Array.from(Buffer.from(withExifBase64, 'base64'));
         editedBuffer = Buffer.from(uint8Array);
-        console.log('✅ EXIF re-injected successfully');
+        console.log('✅ EXIF re-injected into composited image');
       } catch (error) {
         console.warn('⚠️ Failed to inject EXIF into edited image:', error);
         // Continue without EXIF

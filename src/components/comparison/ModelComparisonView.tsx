@@ -31,24 +31,22 @@ export default function ModelComparisonView({
 
   const image = images.find((img) => img.id === imageId);
 
-  // Check if coming from editor or synced mode
-  const [fromEditor, setFromEditor] = useState(false);
-  const [syncedMode, setSyncedMode] = useState(false);
+  // Check if coming from editor or synced mode (initialize from URL params)
+  const [fromEditor] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('fromEditor') === 'true';
+  });
+  const [syncedMode, setSyncedMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('synced') === 'true';
+  });
 
   // Refs for synchronized zoom/pan
   const leftTransformRef = useRef<ReactZoomPanPinchRef>(null);
   const rightTransformRef = useRef<ReactZoomPanPinchRef>(null);
   const isSyncingRef = useRef(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      setFromEditor(params.get('fromEditor') === 'true');
-      setSyncedMode(params.get('synced') === 'true');
-    }
-  }, []);
-
-  const handleTransformChange = (side: 'left' | 'right', state: any) => {
+  const handleTransformChange = (side: 'left' | 'right', state: { positionX: number; positionY: number; scale: number }) => {
     if (isSyncingRef.current || !syncedMode) return;
 
     isSyncingRef.current = true;

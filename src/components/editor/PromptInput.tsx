@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface PromptInputProps {
   value: string;
   onChange: (value: string) => void;
   onGenerate: () => void;
+  onCancel?: () => void;
   isProcessing?: boolean;
   processingModel?: string;
+  estimatedSeconds?: number;
   className?: string;
 }
 
@@ -22,31 +24,59 @@ const PROMPT_SUGGESTIONS = [
   'Make it look professional',
 ];
 
+/**
+ * Simulates progress using a logarithmic curve.
+ * Starts fast, slows down, never reaches 100% until explicitly finished.
+ * Returns 0-95 based on elapsed/estimated ratio.
+ */
+function simulateProgress(elapsedMs: number, estimatedMs: number): number {
+  const ratio = elapsedMs / estimatedMs;
+  // Logarithmic curve: fast start, slow finish
+  // At ratio=1.0 (estimated time), progress is ~80%
+  // Beyond that, crawls toward 95% but never reaches it
+  if (ratio <= 0) return 0;
+  if (ratio <= 1) {
+    // 0 to 80% during estimated time
+    return Math.min(80, ratio * 80 * (1 - Math.exp(-3 * ratio)));
+  }
+  // Beyond estimated time: slowly crawl from 80% toward 95%
+  const overtime = ratio - 1;
+  return Math.min(95, 80 + 15 * (1 - Math.exp(-overtime)));
+}
+
 export default function PromptInput({
   value,
   onChange,
   onGenerate,
+  onCancel,
   isProcessing = false,
   processingModel,
+  estimatedSeconds = 20,
   className = '',
 }: PromptInputProps) {
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startTimeRef = useRef<number>(0);
 
-  // Timer: starts fresh each time isProcessing becomes true, auto-resets to 0
+  // Timer for elapsed time
   useEffect(() => {
     if (!isProcessing) {
-      // Use a microtask to avoid synchronous setState-in-effect lint error
-      const timeout = setTimeout(() => setElapsedTime(0), 0);
-      return () => clearTimeout(timeout);
+      const t = setTimeout(() => setElapsedMs(0), 0);
+      return () => clearTimeout(t);
     }
 
-    const startTime = Date.now();
+    startTimeRef.current = Date.now();
     const interval = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      setElapsedMs(Date.now() - startTimeRef.current);
     }, 100);
 
     return () => clearInterval(interval);
   }, [isProcessing]);
+
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  const estimatedMs = estimatedSeconds * 1000;
+  const progress = isProcessing ? simulateProgress(elapsedMs, estimatedMs) : 0;
+  const remainingSec = Math.max(0, estimatedSeconds - elapsedSec);
+
   return (
     <div className={`flex flex-col gap-3 ${className}`}>
       <div>
@@ -62,97 +92,93 @@ export default function PromptInput({
         />
       </div>
 
-      {/* Processing indicator with time and model */}
+      {/* Processing state: progress bar + cancel button */}
       {isProcessing && (
-        <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 space-y-3">
+          {/* Header: model + elapsed time */}
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                </div>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-white">
-                  Procesando con {processingModel || 'Gemini AI'}
-                </div>
-                <div className="text-xs text-gray-400">
-                  Tiempo transcurrido: {elapsedTime}s
-                </div>
-              </div>
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
+              <span className="text-sm font-medium text-white">
+                {processingModel || 'Gemini AI'}
+              </span>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-400">Estimado</div>
-              <div className="text-sm font-medium text-blue-400">30-60s</div>
+            <span className="text-sm tabular-nums text-gray-400">
+              {elapsedSec}s / ~{estimatedSeconds}s
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="relative">
+            <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="mt-1 flex justify-between text-xs text-gray-500">
+              <span>
+                {progress < 15 ? 'Preparando...' :
+                 progress < 50 ? 'Enviando a Gemini...' :
+                 progress < 80 ? 'Generando imagen...' :
+                 'Procesando resultado...'}
+              </span>
+              <span>{Math.round(progress)}%</span>
             </div>
           </div>
 
-          {/* Animated progress bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-gray-400">
-              <span>Generando edición...</span>
-              <span className="text-blue-400">En progreso</span>
-            </div>
-            <div className="h-2 bg-gray-700/50 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-              </div>
-            </div>
-          </div>
+          {/* Estimated remaining */}
+          {elapsedSec < estimatedSeconds && (
+            <p className="text-xs text-gray-500 text-center">
+              Tiempo restante estimado: ~{remainingSec}s
+            </p>
+          )}
+          {elapsedSec >= estimatedSeconds && (
+            <p className="text-xs text-yellow-500 text-center">
+              Tardando mas de lo esperado...
+            </p>
+          )}
+
+          {/* Cancel button */}
+          <button
+            onClick={onCancel}
+            className="w-full py-2.5 bg-red-900/40 hover:bg-red-900/60 border border-red-700/50 hover:border-red-600 text-red-300 hover:text-red-200 rounded-lg font-medium transition-all text-sm"
+          >
+            Cancelar edicion
+          </button>
         </div>
       )}
 
+      {/* Suggestion chips - only show when not processing */}
+      {!isProcessing && (
+        <div className="flex flex-wrap gap-2">
+          <span className="text-xs text-gray-400">Sugerencias:</span>
+          {PROMPT_SUGGESTIONS.slice(0, 4).map((suggestion) => (
+            <button
+              key={suggestion}
+              onClick={() => onChange(suggestion)}
+              className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Suggestion chips */}
-      <div className="flex flex-wrap gap-2">
-        <span className="text-xs text-gray-400">Quick suggestions:</span>
-        {PROMPT_SUGGESTIONS.slice(0, 4).map((suggestion) => (
-          <button
-            key={suggestion}
-            onClick={() => onChange(suggestion)}
-            className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
-            disabled={isProcessing}
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-
-      {/* Generate button */}
-      <button
-        onClick={onGenerate}
-        disabled={!value.trim() || isProcessing}
-        className={`w-full py-3 rounded-lg font-medium transition-all ${
-          !value.trim() || isProcessing
-            ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-            : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 hover:shadow-lg hover:shadow-blue-500/50'
-        }`}
-      >
-        {isProcessing ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            Generando ({elapsedTime}s)...
-          </span>
-        ) : (
-          '✨ Generar Edición con IA'
-        )}
-      </button>
+      {/* Generate button — only when not processing */}
+      {!isProcessing && (
+        <button
+          onClick={onGenerate}
+          disabled={!value.trim()}
+          className={`w-full py-3 rounded-lg font-medium transition-all ${
+            !value.trim()
+              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 hover:shadow-lg hover:shadow-blue-500/25'
+          }`}
+        >
+          Generar Edicion con IA
+        </button>
+      )}
     </div>
   );
 }
