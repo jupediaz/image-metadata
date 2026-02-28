@@ -168,7 +168,7 @@ export function ExportVersionDialog({ open, onClose, version, originalImage, ses
           <div className="flex items-center justify-between text-sm">
             <div>
               <div className="font-medium text-gray-900 dark:text-gray-100">
-                {version.model?.includes('flash') ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro'}
+                {version.model?.includes('3.1') && version.model?.includes('flash') ? 'Nano Banana 2' : version.model?.includes('flash') ? 'Nano Banana' : 'Nano Banana Pro'}
               </div>
               {version.processingTimeMs && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">

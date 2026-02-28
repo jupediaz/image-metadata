@@ -31,7 +31,7 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
 
   const { startProgress, updateProgress, finishProgress, failProgress } = useProgress();
   const [preserveExif, setPreserveExif] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash-image');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-image-preview');
   const [safeZoneMask, setSafeZoneMask] = useState<string | null>(null);
 
   // AbortController for cancelling the API request
@@ -48,10 +48,17 @@ export default function ImageEditor({ imageId }: ImageEditorProps) {
 
   const modelOptions = [
     {
+      value: 'gemini-3.1-flash-image-preview',
+      label: 'Flash Image 3.1',
+      nickname: 'Nano Banana 2',
+      description: 'Nuevo - mas rapido y preciso (recomendado)',
+      estimatedSeconds: 12,
+    },
+    {
       value: 'gemini-2.5-flash-image',
-      label: 'Flash Image',
+      label: 'Flash Image 2.5',
       nickname: 'Nano Banana',
-      description: 'Rapido y estable (recomendado)',
+      description: 'Rapido y estable',
       estimatedSeconds: 15,
     },
     {

@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Default Gemini model for image generation (Nano Banana - fast)
-const DEFAULT_MODEL = 'gemini-2.5-flash-image';
+// Default Gemini model for image generation (Nano Banana 2 - fast, 2026)
+const DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
 
 interface EditImageParams {
   imageBase64: string;
@@ -145,7 +145,7 @@ export async function editImageWithGemini(
 
   if (!imageBase64) {
     console.error('No image found in response. Model:', modelName);
-    throw new Error(`Gemini did not return an image. Model "${modelName}" may not support image generation. Try using "gemini-2.5-flash-image" or "gemini-3-pro-image-preview" instead.`);
+    throw new Error(`Gemini did not return an image. Model "${modelName}" may not support image generation. Try using "gemini-3.1-flash-image-preview" (Nano Banana 2), "gemini-2.5-flash-image" (Nano Banana) or "gemini-3-pro-image-preview" (Nano Banana Pro) instead.`);
   }
 
   return { imageBase64, text };

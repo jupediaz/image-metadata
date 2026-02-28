@@ -68,18 +68,23 @@ function AITab({ imageId }: { imageId: string }) {
   } = useImageStore();
 
   const [preserveExif, setPreserveExif] = useState(true);
-  const [selectedModels, setSelectedModels] = useState<string[]>(['gemini-3-pro-image-preview']);
+  const [selectedModels, setSelectedModels] = useState<string[]>(['gemini-3.1-flash-image-preview']);
   const [isSaving, setIsSaving] = useState(false);
 
   const modelOptions = [
     {
+      value: 'gemini-3.1-flash-image-preview',
+      label: 'Nano Banana 2',
+      description: 'New - fastest, recommended (2026)',
+    },
+    {
       value: 'gemini-2.5-flash-image',
-      label: 'Flash Image',
-      description: 'Fast generation (recommended)',
+      label: 'Nano Banana',
+      description: 'Fast and stable',
     },
     {
       value: 'gemini-3-pro-image-preview',
-      label: 'Pro Image',
+      label: 'Nano Banana Pro',
       description: 'Highest quality (slower)',
     },
   ];

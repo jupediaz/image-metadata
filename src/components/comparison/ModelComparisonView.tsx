@@ -6,6 +6,13 @@ import { useImageStore } from '@/hooks/useImageStore';
 import { useComparisonStore } from '@/hooks/useComparisonStore';
 import { EditVersion } from '@/types/image';
 import ComparisonSlider from './ComparisonSlider';
+
+function getModelDisplayName(model: string | undefined): string {
+  if (!model) return 'AI';
+  if (model.includes('3.1') && model.includes('flash')) return 'Nano Banana 2';
+  if (model.includes('flash')) return 'Nano Banana';
+  return 'Nano Banana Pro';
+}
 import ViewportSelector from './ViewportSelector';
 import { ExportVersionDialog } from '../dialogs/ExportVersionDialog';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
@@ -92,7 +99,7 @@ export default function ModelComparisonView({
       const modelName = source.replace('model-', '');
       const version = image.editHistory?.findLast((v) => v.model === modelName);
       if (version) {
-        const label = modelName.includes('flash') ? 'Flash' : 'Pro';
+        const label = modelName.includes('3.1') && modelName.includes('flash') ? 'NB2' : modelName.includes('flash') ? 'NB' : 'Pro';
         return { url: version.imageUrl, label, id: source, version };
       }
     }
@@ -250,7 +257,7 @@ export default function ModelComparisonView({
                     {left.version && (
                       <>
                         <div className="text-xs text-blue-300 font-medium">
-                          {left.version.model?.includes('flash') ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro'}
+                          {getModelDisplayName(left.version.model)}
                         </div>
                         {left.version.processingTimeMs && (
                           <div className="text-xs text-gray-300">
@@ -346,7 +353,7 @@ export default function ModelComparisonView({
                     {right.version && (
                       <>
                         <div className="text-xs text-blue-300 font-medium">
-                          {right.version.model?.includes('flash') ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro'}
+                          {getModelDisplayName(right.version.model)}
                         </div>
                         {right.version.processingTimeMs && (
                           <div className="text-xs text-gray-300">
@@ -428,7 +435,7 @@ export default function ModelComparisonView({
                     {left.version && (
                       <>
                         <div className="text-xs text-blue-300 font-medium">
-                          {left.version.model?.includes('flash') ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro'}
+                          {getModelDisplayName(left.version.model)}
                         </div>
                         {left.version.processingTimeMs && (
                           <div className="text-xs text-gray-300">
@@ -508,7 +515,7 @@ export default function ModelComparisonView({
                     {right.version && (
                       <>
                         <div className="text-xs text-blue-300 font-medium">
-                          {right.version.model?.includes('flash') ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro'}
+                          {getModelDisplayName(right.version.model)}
                         </div>
                         {right.version.processingTimeMs && (
                           <div className="text-xs text-gray-300">
