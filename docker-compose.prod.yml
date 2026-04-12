@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.image-metadata.rule=Host(`image-metadata.codelabs.studio`)"
+      - "traefik.http.routers.image-metadata.entrypoints=websecure"
+      - "traefik.http.routers.image-metadata.tls=true"
+      - "traefik.http.routers.image-metadata.tls.certresolver=letsencrypt"
+      - "traefik.http.services.image-metadata.loadbalancer.server.port=3000"
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
