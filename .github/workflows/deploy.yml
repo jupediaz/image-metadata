@@ -1,0 +1,34 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-image-metadata
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, xeon]
+    steps:
+      - name: Deploy image-metadata to Xeon
+        run: |
+          set -euo pipefail
+          COMPOSE_DIR="/etc/dokploy/compose/compose-override-1080p-monitor-d9x6az/code"
+          PROJECT="compose-override-1080p-monitor-d9x6az"
+          cd "$COMPOSE_DIR"
+          git pull origin main
+          docker compose -p "$PROJECT" build
+          docker compose -p "$PROJECT" up -d
+          echo "Waiting for health check..."
+          CONTAINER=$(docker ps --filter "name=${PROJECT}" --format '{{.Names}}' | grep -E 'app|web|api' | head -1)
+          for i in $(seq 1 24); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo unknown)
+            echo "  attempt $i/24: $STATUS"
+            [ "$STATUS" = "healthy" ] && echo "Deployed successfully" && exit 0
+            sleep 5
+          done
+          echo "ERROR: container not healthy after 120s"
+          docker logs "$CONTAINER" --tail=50
+          exit 1
