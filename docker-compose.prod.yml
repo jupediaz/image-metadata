@@ -8,16 +8,17 @@ services:
     environment:
       - NODE_ENV=production
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.image-metadata.rule=Host(`image-metadata.codelabs.studio`)"
       - "traefik.http.routers.image-metadata.entrypoints=websecure"
       - "traefik.http.routers.image-metadata.tls=true"
-      - "traefik.http.routers.image-metadata.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.image-metadata.tls.certresolver=letsencrypt-dns"
       - "traefik.http.services.image-metadata.loadbalancer.server.port=3000"
     networks:
       - dokploy-network
