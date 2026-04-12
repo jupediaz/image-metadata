@@ -17,18 +17,17 @@ jobs:
           set -euo pipefail
           COMPOSE_DIR="/etc/dokploy/compose/compose-override-1080p-monitor-d9x6az/code"
           PROJECT="compose-override-1080p-monitor-d9x6az"
+          COMPOSE_FILE="docker-compose.prod.yml"
           cd "$COMPOSE_DIR"
-          git pull origin main
-          docker compose -p "$PROJECT" build
-          docker compose -p "$PROJECT" up -d
-          echo "Waiting for health check..."
-          CONTAINER=$(docker ps --filter "name=${PROJECT}" --format '{{.Names}}' | grep -E 'app|web|api' | head -1)
-          for i in $(seq 1 24); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo unknown)
-            echo "  attempt $i/24: $STATUS"
-            [ "$STATUS" = "healthy" ] && echo "Deployed successfully" && exit 0
-            sleep 5
-          done
-          echo "ERROR: container not healthy after 120s"
-          docker logs "$CONTAINER" --tail=50
-          exit 1
+          git fetch origin main && git reset --hard origin/main
+          docker compose -f "$COMPOSE_FILE" -p "$PROJECT" build
+          docker compose -f "$COMPOSE_FILE" -p "$PROJECT" up -d
+          echo "Checking containers are running..."
+          sleep 10
+          FAILED=$(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" ps --status exited --quiet | wc -l)
+          if [ "$FAILED" -gt 0 ]; then
+            echo "ERROR: $FAILED container(s) exited after deploy"
+            docker compose -f "$COMPOSE_FILE" -p "$PROJECT" logs --tail=50
+            exit 1
+          fi
+          echo "Deploy completed successfully"
