@@ -187,24 +187,19 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ## 🌐 Deploy
 
-### Railway
+### Servidor propio (Docker)
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template)
+El despliegue de producción corre en el servidor EPYC mediante Docker Compose y Traefik (`docker-compose.prod.yml`), publicado en `https://image-metadata.codelabs.studio`.
 
-1. **Conecta tu repositorio** a Railway
-2. **Configura las variables de entorno**:
+1. **Configura las variables de entorno** (`.env`):
    - `GOOGLE_GEMINI_API_KEY`
-3. **Deploy automático** en cada push a main
+2. **Despliega**:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+3. **Deploy automático** en cada push a `main` vía el workflow `.github/workflows/deploy.yml`.
 
-### Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
-
-1. **Importa tu repositorio** en Vercel
-2. **Configura las variables de entorno**
-3. **Deploy automático**
-
-**Nota importante:** ExifTool debe estar disponible en el entorno de producción. Railway lo instala automáticamente. Para Vercel, necesitarás un buildpack personalizado.
+**Nota importante:** si el procesamiento de metadatos depende de ExifTool, asegúrate de instalarlo en la imagen Docker (`apk add exiftool`) antes de desplegar.
 
 ## 🎯 Funcionalidades Detalladas
 
