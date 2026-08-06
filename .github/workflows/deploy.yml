@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, linux, x64, xeon]
+    runs-on: [self-hosted, linux, x64, epyc]
     steps:
       - name: Deploy image-metadata to Xeon
         run: |
