@@ -17,7 +17,8 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const MODEL = process.argv[2] || 'gemini-2.0-flash-exp';
+// gemini-2.0-flash-exp was shut down with the 2.0 family on 2026-06-01.
+const MODEL = process.argv[2] || 'gemini-3.1-flash-image-preview';
 const OUTPUT_PREFIX = process.argv[3] || 'lexiel-infographic';
 
 async function generateInfographic(prompt, outputName) {
@@ -76,7 +77,7 @@ async function generateInfographic(prompt, outputName) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.error(`❌ Error after ${elapsed}s:`, error.message);
     if (error.message.includes('not found') || error.message.includes('not supported')) {
-      console.log('\n💡 Try a different model: gemini-2.0-flash-exp, gemini-2.5-flash-image, gemini-3.1-flash-image-preview');
+      console.log('\n💡 Try a different model: gemini-3.1-flash-image-preview, gemini-3-pro-image-preview');
     }
     return 0;
   }
