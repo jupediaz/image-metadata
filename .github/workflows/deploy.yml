@@ -3,6 +3,13 @@ name: Deploy
 on:
   push:
     branches: [main]
+    paths-ignore:
+      # Tocar el propio workflow no puede desplegar produccion. Se anadio el
+      # 2026-08-24 al renombrar "Xeon" por "EPYC": sin esto, un cambio de nombre
+      # habria disparado un deploy real en 11 proyectos a la vez, varios de ellos
+      # sin desplegar desde hacia dos meses.
+      - '.github/**'
+      - '**.md'
 
 concurrency:
   group: deploy-image-metadata
@@ -12,7 +19,7 @@ jobs:
   deploy:
     runs-on: [self-hosted, linux, x64, epyc]
     steps:
-      - name: Deploy image-metadata to Xeon
+      - name: Deploy image-metadata to EPYC
         run: |
           set -euo pipefail
           COMPOSE_DIR="/etc/dokploy/compose/compose-override-1080p-monitor-d9x6az/code"
