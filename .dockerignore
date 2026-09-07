@@ -1,0 +1,19 @@
+# Contexto de build de image-metadata
+# --- Endurecimiento del contexto de build (2026-09-07) ---
+# El contexto entero se sube al daemon y, con `COPY . .`, acaba dentro de la
+# imagen. El 2026-09-07 se encontro /app/.git/config horneado en memoryfirst
+# con el token de despliegue de Forgejo en la URL del remoto, y .env de
+# produccion horneado en cinco imagenes mas del portfolio.
+.git
+.gitignore
+.env
+**/.env
+.env.*
+**/.env.*
+node_modules
+**/node_modules
+*.pem
+*.key
+.claude
+.playwright-mcp
+!**/.env*.example
