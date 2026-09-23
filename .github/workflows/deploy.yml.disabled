@@ -1,3 +1,17 @@
+# RETIRED 2026-09-23. Kept (renamed, not deleted) so a `git revert` restores it.
+#
+# This workflow deployed with docker compose up -d, which RECREATES the container: the old one
+# is stopped before the new one is healthy, so the site answered 502 during
+# every deploy (the same failure that cut hub-api for about two minutes on
+# 2026-09-23). The portfolio rule is zero-downtime deploys only.
+#
+# The project now deploys like the rest of the portfolio: push to the deploy
+# branch on Forgejo -> signed webhook -> deploy-any on the EPYC ->
+# /usr/local/bin/zero-downtime-deploy (the same binary `cb-deploy image-metadata` uses).
+# See codelabs-core infra/deploy-webhook/README.md. Never run two deploy
+# mechanisms on the same checkout at once: re-enabling this means removing the
+# Forgejo webhook first.
+#
 name: Deploy
 
 on:
