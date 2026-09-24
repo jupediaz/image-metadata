@@ -325,3 +325,5 @@ Este proyecto está licenciado bajo la Licencia MIT. Ver el archivo [LICENSE](LI
 ---
 
 **⭐ Si este proyecto te resulta útil, considera darle una estrella en GitHub!**
+
+<!-- merge queue check unprot4 (2026-09-24T09:32Z) -->
