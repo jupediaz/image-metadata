@@ -1,5 +1,9 @@
 services:
-  app:
+  # Nombre con prefijo del proyecto (2026-09-27): compose registra el nombre del
+  # servicio como alias DNS en cada red, y dokploy-network la comparten todos
+  # los proyectos del EPYC. Un `app` a secas lo reclamaban nueve proyectos a la
+  # vez y Docker reparte las resoluciones entre todos.
+  image-metadata-app:
     build:
       context: .
       dockerfile: Dockerfile
